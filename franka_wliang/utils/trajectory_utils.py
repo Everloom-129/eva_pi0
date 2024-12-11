@@ -1,0 +1,609 @@
+import os
+import tempfile
+from queue import Empty, Queue
+import time
+from collections import defaultdict
+from copy import deepcopy
+import numpy as np
+import cv2
+from PIL import Image
+import h5py
+import imageio
+
+from franka_wliang.utils.parameters import camera_type_to_string_dict
+from franka_wliang.cameras.multi_camera_wrapper import RecordedMultiCameraWrapper
+from franka_wliang.utils.misc_utils import time_ms
+from franka_wliang.utils.misc_utils import run_threaded_command
+
+##############################################################
+
+def write_dict_to_hdf5(hdf5_file, data_dict, keys_to_ignore=["image", "depth", "pointcloud"]):
+    for key in data_dict.keys():
+        # Pass Over Specified Keys #
+        if key in keys_to_ignore:
+            continue
+
+        # Examine Data #
+        curr_data = data_dict[key]
+        if type(curr_data) == list:
+            curr_data = np.array(curr_data)
+        dtype = type(curr_data)
+
+        # Unwrap If Dictionary #
+        if dtype == dict:
+            if key not in hdf5_file:
+                hdf5_file.create_group(key)
+            write_dict_to_hdf5(hdf5_file[key], curr_data)
+            continue
+
+        # Make Room For Data #
+        if key not in hdf5_file:
+            if dtype != np.ndarray:
+                dshape = ()
+            else:
+                dtype, dshape = curr_data.dtype, curr_data.shape
+            hdf5_file.create_dataset(key, (1, *dshape), maxshape=(None, *dshape), dtype=dtype)
+        else:
+            hdf5_file[key].resize(hdf5_file[key].shape[0] + 1, axis=0)
+
+        # Save Data #
+        hdf5_file[key][-1] = curr_data
+
+
+class TrajectoryWriter:
+    def __init__(self, filepath, metadata=None, exists_ok=False, save_images=True):
+        assert (not os.path.isfile(filepath)) or exists_ok
+        self._filepath = filepath
+        self._save_images = save_images
+        self._hdf5_file = h5py.File(filepath, "w")
+        self._queue_dict = defaultdict(Queue)
+        self._video_writers = {}
+        self._video_files = {}
+        self._open = True
+
+        # Add Metadata #
+        if metadata is not None:
+            self._update_metadata(metadata)
+
+        # Start HDF5 Writer Thread #
+        def hdf5_writer(data):
+            return write_dict_to_hdf5(self._hdf5_file, data)
+
+        run_threaded_command(self._write_from_queue, args=(hdf5_writer, self._queue_dict["hdf5"]))
+
+    def write_timestep(self, timestep):
+        if self._save_images:
+            self._update_video_files(timestep)
+        self._queue_dict["hdf5"].put(timestep)
+
+    def _update_metadata(self, metadata):
+        for key in metadata:
+            self._hdf5_file.attrs[key] = deepcopy(metadata[key])
+
+    def _write_from_queue(self, writer, queue):
+        while self._open:
+            try:
+                data = queue.get(timeout=1)
+            except Empty:
+                continue
+            writer(data)
+            queue.task_done()
+
+    def _update_video_files(self, timestep):
+        image_dict = timestep["observations"]["image"]
+
+        for video_id in image_dict:
+            # Get Frame #
+            img = image_dict[video_id]
+            del image_dict[video_id]
+
+            # Create Writer And Buffer #
+            if video_id not in self._video_buffers:
+                filename = self.create_video_file(video_id, ".mp4")
+                self._video_writers[video_id] = imageio.get_writer(filename, macro_block_size=1)
+                run_threaded_command(
+                    self._write_from_queue, args=(self._video_writers[video_id].append_data, self._queue_dict[video_id])
+                )
+
+            # Add Image To Queue #
+            self._queue_dict[video_id].put(img)
+
+        del timestep["observations"]["image"]
+
+    def create_video_file(self, video_id, suffix):
+        temp_file = tempfile.NamedTemporaryFile(suffix=suffix)
+        self._video_files[video_id] = temp_file
+        return temp_file.name
+
+    def close(self, metadata=None):
+        # Add Metadata #
+        if metadata is not None:
+            self._update_metadata(metadata)
+
+        # Finish Remaining Jobs #
+        [queue.join() for queue in self._queue_dict.values()]
+
+        # Close Video Writers #
+        for video_id in self._video_writers:
+            self._video_writers[video_id].close()
+
+        # Save Serialized Videos #
+        for video_id in self._video_files:
+            # Create Folder #
+            if "videos" not in self._hdf5_file["observations"]:
+                self._hdf5_file["observations"].create_group("videos")
+
+            # Get Serialized Video #
+            self._video_files[video_id].seek(0)
+            serialized_video = np.asarray(self._video_files[video_id].read())
+
+            # Save Data #
+            self._hdf5_file["observations"]["videos"].create_dataset(video_id, data=serialized_video)
+            self._video_files[video_id].close()
+
+        # Close File #
+        self._hdf5_file.close()
+        self._open = False
+
+
+##############################################################
+
+def create_video_file(suffix=".mp4", byte_contents=None):
+    # Create Temporary File #
+    temp_file = tempfile.NamedTemporaryFile(suffix=suffix)
+    filename = temp_file.name
+
+    # If Byte Contents Provided, Write To File #
+    if byte_contents is not None:
+        with open(filename, "wb") as binary_file:
+            binary_file.write(byte_contents)
+
+    return filename
+
+
+def get_hdf5_length(hdf5_file, keys_to_ignore=[]):
+    length = None
+
+    for key in hdf5_file.keys():
+        if key in keys_to_ignore:
+            continue
+
+        curr_data = hdf5_file[key]
+        if isinstance(curr_data, h5py.Group):
+            curr_length = get_hdf5_length(curr_data, keys_to_ignore=keys_to_ignore)
+        elif isinstance(curr_data, h5py.Dataset):
+            curr_length = len(curr_data)
+        else:
+            raise ValueError
+
+        if length is None:
+            length = curr_length
+        assert curr_length == length
+
+    return length
+
+
+def load_hdf5_to_dict(hdf5_file, index, keys_to_ignore=[]):
+    data_dict = {}
+
+    for key in hdf5_file.keys():
+        if key in keys_to_ignore:
+            continue
+
+        curr_data = hdf5_file[key]
+        if isinstance(curr_data, h5py.Group):
+            data_dict[key] = load_hdf5_to_dict(curr_data, index, keys_to_ignore=keys_to_ignore)
+        elif isinstance(curr_data, h5py.Dataset):
+            data_dict[key] = curr_data[index]
+        else:
+            raise ValueError
+
+    return data_dict
+
+
+class TrajectoryReader:
+    def __init__(self, filepath, read_images=True):
+        self._hdf5_file = h5py.File(filepath, "r")
+        is_video_folder = "observations/videos" in self._hdf5_file
+        self._read_images = read_images and is_video_folder
+        self._length = get_hdf5_length(self._hdf5_file)
+        self._video_readers = {}
+        self._index = 0
+
+    def length(self):
+        return self._length
+
+    def read_timestep(self, index=None, keys_to_ignore=[]):
+        # Make Sure We Read Within Range #
+        if index is None:
+            index = self._index
+        else:
+            assert not self._read_images
+            self._index = index
+        assert index < self._length
+
+        # Load Low Dimensional Data #
+        keys_to_ignore = [*keys_to_ignore.copy(), "videos"]
+        timestep = load_hdf5_to_dict(self._hdf5_file, self._index, keys_to_ignore=keys_to_ignore)
+
+        # Load High Dimensional Data #
+        if self._read_images:
+            camera_obs = self._uncompress_images()
+            timestep["observations"]["image"] = camera_obs
+
+        # Increment Read Index #
+        self._index += 1
+
+        # Return Timestep #
+        return timestep
+
+    def _uncompress_images(self):
+        # WARNING: THIS FUNCTION HAS NOT BEEN TESTED. UNDEFINED BEHAVIOR FOR FAILED READING. #
+        video_folder = self._hdf5_file["observations/videos"]
+        camera_obs = {}
+
+        for video_id in video_folder:
+            # Create Video Reader If One Hasn't Been Made #
+            if video_id not in self._video_readers:
+                serialized_video = video_folder[video_id]
+                filename = create_video_file(byte_contents=serialized_video)
+                self._video_readers[video_id] = imageio.get_reader(filename)
+
+            # Read Next Frame #
+            camera_obs[video_id] = yield self._video_readers[video_id]
+            # Future Note: Could Make Thread For Each Image Reader
+
+        # Return Camera Observation #
+        return camera_obs
+
+    def close(self):
+        self._hdf5_file.close()
+
+
+
+##############################################################
+
+def collect_trajectory(
+    env,
+    controller=None,
+    policy=None,
+    horizon=None,
+    save_filepath=None,
+    metadata=None,
+    wait_for_controller=False,
+    obs_pointer=None,
+    save_images=False,
+    recording_folderpath=False,
+    randomize_reset=False,
+    reset_robot=True,
+):
+    """
+    Collects a robot trajectory.
+    - If policy is None, actions will come from the controller
+    - If a horizon is given, we will step the environment accordingly
+    - Otherwise, we will end the trajectory when the controller tells us to
+    - If you need a pointer to the current observation, pass a dictionary in for obs_pointer
+    """
+
+    # Check Parameters #
+    assert (controller is not None) or (policy is not None)
+    assert (controller is not None) or (horizon is not None)
+    if wait_for_controller:
+        assert controller is not None
+    if obs_pointer is not None:
+        assert isinstance(obs_pointer, dict)
+    if save_images:
+        assert save_filepath is not None
+
+    # Reset States #
+    if controller is not None:
+        controller.reset_state()
+    env.camera_reader.set_trajectory_mode()
+
+    # Prepare Data Writers If Necesary #
+    if save_filepath:
+        traj_writer = TrajectoryWriter(save_filepath, metadata=metadata, save_images=save_images)
+    if recording_folderpath:
+        env.camera_reader.start_recording(recording_folderpath)
+
+    # Prepare For Trajectory #
+    num_steps = 0
+    if reset_robot:
+        env.reset(randomize=randomize_reset)
+
+    # Begin! #
+    while True:
+        # Collect Miscellaneous Info #
+        controller_info = {} if (controller is None) else controller.get_info()
+        skip_action = wait_for_controller and (not controller_info["movement_enabled"])
+        control_timestamps = {"step_start": time_ms()}
+
+        # Get Observation #
+        obs = env.get_observation()
+        if obs_pointer is not None:
+            obs_pointer.update(obs)
+        obs["controller_info"] = controller_info
+        obs["timestamp"]["skip_action"] = skip_action
+
+        # Get Action #
+        control_timestamps["policy_start"] = time_ms()
+        if policy is None:
+            action, controller_action_info = controller.forward(obs, include_info=True)
+        else:
+            action = policy.forward(obs)
+            controller_action_info = {}
+
+        # Regularize Control Frequency #
+        control_timestamps["sleep_start"] = time_ms()
+        comp_time = time_ms() - control_timestamps["step_start"]
+        sleep_left = (1 / env.control_hz) - (comp_time / 1000)
+        if sleep_left > 0:
+            time.sleep(sleep_left)
+
+        # Moniter Control Frequency #
+        # moniter_control_frequency = True
+        # if moniter_control_frequency:
+        # 	print('Sleep Left: ', sleep_left)
+        # 	print('Feasible Hz: ', (1000 / comp_time))
+
+        # Step Environment #
+        control_timestamps["control_start"] = time_ms()
+        if skip_action:
+            action_info = env.create_action_dict(np.zeros_like(action))
+        else:
+            action_info = env.step(action)
+        action_info.update(controller_action_info)
+
+        # Save Data #
+        control_timestamps["step_end"] = time_ms()
+        obs["timestamp"]["control"] = control_timestamps
+        timestep = {"observation": obs, "action": action_info}
+        if save_filepath:
+            traj_writer.write_timestep(timestep)
+
+        # Check Termination #
+        num_steps += 1
+        if horizon is not None:
+            end_traj = horizon == num_steps
+        else:
+            end_traj = controller_info["success"] or controller_info["failure"]
+
+        # Close Files And Return #
+        if end_traj:
+            if recording_folderpath:
+                env.camera_reader.stop_recording()
+            if save_filepath:
+                traj_writer.close(metadata=controller_info)
+            return controller_info
+
+def replay_trajectory(
+    env, filepath=None, assert_replayable_keys=["cartesian_position", "gripper_position", "joint_positions"]
+):
+    print("WARNING: STATE 'CLOSENESS' FOR REPLAYABILITY HAS NOT BEEN CALIBRATED")
+    gripper_key = "gripper_velocity" if "velocity" in env.action_space else "gripper_position"
+
+    # Prepare Trajectory Reader #
+    traj_reader = TrajectoryReader(filepath, read_images=False)
+    horizon = traj_reader.length()
+
+    for i in range(horizon):
+        # Get HDF5 Data #
+        timestep = traj_reader.read_timestep()
+
+        # Move To Initial Position #
+        if i == 0:
+            init_joint_position = timestep["observation"]["robot_state"]["joint_positions"]
+            init_gripper_position = timestep["observation"]["robot_state"]["gripper_position"]
+            action = np.concatenate([init_joint_position, [init_gripper_position]])
+            env.update_robot(action, action_space="joint_position", blocking=True)
+
+        # TODO: Assert Replayability #
+        # robot_state = env.get_state()[0]
+        # for key in assert_replayable_keys:
+        # 	desired = timestep['observation']['robot_state'][key]
+        # 	current = robot_state[key]
+        # 	assert np.allclose(desired, current)
+
+        # Regularize Control Frequency #
+        time.sleep(1 / env.control_hz)
+
+        # Get Action In Desired Action Space #
+        arm_action = timestep["action"][env.action_space]
+        gripper_action = timestep["action"][gripper_key]
+        action = np.concatenate([arm_action, [gripper_action]])
+        controller_info = timestep["observation"]["controller_info"]
+        movement_enabled = controller_info.get("movement_enabled", True)
+
+        # Follow Trajectory #
+        if movement_enabled:
+            env.step(action)
+
+
+def load_trajectory(
+    filepath=None,
+    read_cameras=True,
+    recording_folderpath=None,
+    camera_kwargs={},
+    remove_skipped_steps=False,
+    num_samples_per_traj=None,
+    num_samples_per_traj_coeff=1.5,
+):
+    read_hdf5_images = read_cameras and (recording_folderpath is None)
+    read_recording_folderpath = read_cameras and (recording_folderpath is not None)
+
+    traj_reader = TrajectoryReader(filepath, read_images=read_hdf5_images)
+    if read_recording_folderpath:
+        camera_reader = RecordedMultiCameraWrapper(recording_folderpath, camera_kwargs)
+
+    horizon = traj_reader.length()
+    timestep_list = []
+
+    # Choose Timesteps To Save #
+    if num_samples_per_traj:
+        num_to_save = num_samples_per_traj
+        if remove_skipped_steps:
+            num_to_save = int(num_to_save * num_samples_per_traj_coeff)
+        max_size = min(num_to_save, horizon)
+        indices_to_save = np.sort(np.random.choice(horizon, size=max_size, replace=False))
+    else:
+        indices_to_save = np.arange(horizon)
+
+    # Iterate Over Trajectory #
+    for i in indices_to_save:
+        # Get HDF5 Data #
+        timestep = traj_reader.read_timestep(index=i)
+
+        # If Applicable, Get Recorded Data #
+        if read_recording_folderpath:
+            timestamp_dict = timestep["observation"]["timestamp"]["cameras"]
+            camera_type_dict = {
+                k: camera_type_to_string_dict[v] for k, v in timestep["observation"]["camera_type"].items()
+            }
+            camera_obs = camera_reader.read_cameras(
+                index=i, camera_type_dict=camera_type_dict, timestamp_dict=timestamp_dict
+            )
+            camera_failed = camera_obs is None
+
+            # Add Data To Timestep If Successful #
+            if camera_failed:
+                break
+            else:
+                timestep["observation"].update(camera_obs)
+
+        # Filter Steps #
+        step_skipped = not timestep["observation"]["controller_info"].get("movement_enabled", True)
+        delete_skipped_step = step_skipped and remove_skipped_steps
+
+        # Save Filtered Timesteps #
+        if delete_skipped_step:
+            del timestep
+        else:
+            timestep_list.append(timestep)
+
+    # Remove Extra Transitions #
+    timestep_list = np.array(timestep_list)
+    if (num_samples_per_traj is not None) and (len(timestep_list) > num_samples_per_traj):
+        ind_to_keep = np.random.choice(len(timestep_list), size=num_samples_per_traj, replace=False)
+        timestep_list = timestep_list[ind_to_keep]
+
+    # Close Readers #
+    traj_reader.close()
+    if read_recording_folderpath:
+        camera_reader.disable_cameras()
+
+    # Return Data #
+    return timestep_list
+
+
+def visualize_timestep(timestep, max_width=1000, max_height=500, aspect_ratio=1.5, pause_time=15):
+    # Process Image Data #
+    obs = timestep["observation"]
+    if "image" in obs:
+        img_obs = obs["image"]
+    elif "image" in obs["camera"]:
+        img_obs = obs["camera"]["image"]
+    else:
+        raise ValueError
+
+    camera_ids = sorted(img_obs.keys())
+    sorted_image_list = []
+    for cam_id in camera_ids:
+        data = img_obs[cam_id]
+        if type(data) == list:
+            sorted_image_list.extend(data)
+        else:
+            sorted_image_list.append(data)
+
+    # Get Ideal Number Of Rows #
+    num_images = len(sorted_image_list)
+    max_num_rows = int(num_images**0.5)
+    for num_rows in range(max_num_rows, 0, -1):
+        num_cols = num_images // num_rows
+        if num_images % num_rows == 0:
+            break
+
+    # Get Per Image Shape #
+    max_img_width, max_img_height = max_width // num_cols, max_height // num_rows
+    if max_img_width > aspect_ratio * max_img_height:
+        img_width, img_height = max_img_width, int(max_img_width / aspect_ratio)
+    else:
+        img_width, img_height = int(max_img_height * aspect_ratio), max_img_height
+
+    # Fill Out Image Grid #
+    img_grid = [[] for i in range(num_rows)]
+
+    for i in range(len(sorted_image_list)):
+        img = Image.fromarray(sorted_image_list[i])
+        resized_img = img.resize((img_width, img_height), Image.Resampling.LANCZOS)
+        img_grid[i % num_rows].append(np.array(resized_img))
+
+    # Combine Images #
+    for i in range(num_rows):
+        img_grid[i] = np.hstack(img_grid[i])
+    img_grid = np.vstack(img_grid)
+
+    # Visualize Frame #
+    cv2.imshow("Image Feed", img_grid)
+    cv2.waitKey(pause_time)
+
+
+def visualize_trajectory(
+    filepath,
+    recording_folderpath=None,
+    remove_skipped_steps=False,
+    camera_kwargs={},
+    max_width=1000,
+    max_height=500,
+    aspect_ratio=1.5,
+):
+    traj_reader = TrajectoryReader(filepath, read_images=True)
+    if recording_folderpath:
+        if camera_kwargs is {}:
+            camera_kwargs = defaultdict(lambda: {"image": True})
+        camera_reader = RecordedMultiCameraWrapper(recording_folderpath, camera_kwargs)
+
+    horizon = traj_reader.length()
+    camera_failed = False
+
+    for i in range(horizon):
+        # Get HDF5 Data #
+        timestep = traj_reader.read_timestep()
+
+        # If Applicable, Get Recorded Data #
+        if recording_folderpath:
+            timestamp_dict = timestep["observation"]["timestamp"]["cameras"]
+            camera_type_dict = {
+                k: camera_type_to_string_dict[v] for k, v in timestep["observation"]["camera_type"].items()
+            }
+            camera_obs = camera_reader.read_cameras(
+                index=i, camera_type_dict=camera_type_dict, timestamp_dict=timestamp_dict
+            )
+            camera_failed = camera_obs is None
+
+            # Add Data To Timestep #
+            if not camera_failed:
+                timestep["observation"].update(camera_obs)
+
+        # Filter Steps #
+        step_skipped = not timestep["observation"]["controller_info"].get("movement_enabled", True)
+        delete_skipped_step = step_skipped and remove_skipped_steps
+        delete_step = delete_skipped_step or camera_failed
+        if delete_step:
+            continue
+
+        # Get Image Info #
+        assert "image" in timestep["observation"]
+        img_obs = timestep["observation"]["image"]
+        camera_ids = list(img_obs.keys())
+        len(camera_ids)
+        camera_ids.sort()
+
+        # Visualize Timestep #
+        visualize_timestep(
+            timestep, max_width=max_width, max_height=max_height, aspect_ratio=aspect_ratio, pause_time=15
+        )
+
+    # Close Readers #
+    traj_reader.close()
+    if recording_folderpath:
+        camera_reader.disable_cameras()
