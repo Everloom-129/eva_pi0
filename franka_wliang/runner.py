@@ -67,7 +67,7 @@ class Runner:
         self.env.camera_reader.set_trajectory_mode()
 
     def collect_trajectory(self, info=None, practice=False, reset_robot=True):
-        self.last_traj_name = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        self.last_traj_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         if info is None:
             info = {}
