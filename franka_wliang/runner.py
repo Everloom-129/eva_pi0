@@ -115,6 +115,44 @@ class Runner:
         self.last_traj_name = traj_name
         self.last_traj_path = save_dir
 
+    def play_trajectory(self, policy_wrapper, reset_robot=True):
+        '''
+        Assume traj_path is a directory containing a trajectory.h5 file.
+        '''
+
+        traj_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        info = {}
+        info["time"] = traj_name
+        info["robot_serial_number"] = f"{robot_type}-{robot_serial_number}"
+        info["version_number"] = code_version
+        
+        recording_dir = None
+        save_filepath = None
+
+
+        controller_info = collect_trajectory(
+            self.env,
+            controller=self.controller,
+            metadata=info,
+            policy=policy_wrapper,
+            obs_pointer=self.obs_pointer,
+            reset_robot=reset_robot,
+            recording_folderpath=recording_dir,
+            save_filepath=save_filepath,
+            wait_for_controller=True,
+        )
+        self.traj_running = False
+        self.obs_pointer = {}
+
+        # if save_filepath is not None:
+        #     if controller_info["success"]:
+        #         new_save_dir = os.path.join(self.success_logdir, traj_name)
+        #         shutil.move(save_dir, new_save_dir)
+        #         save_dir = new_save_dir
+        
+        self.last_traj_name = traj_name
+        # self.last_traj_path = save_dir
+
     def calibrate_camera(self, cam_id, reset_robot=True):
         self.traj_running = True
         self.env._robot.establish_connection()
