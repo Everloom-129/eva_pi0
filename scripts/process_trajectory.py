@@ -96,7 +96,7 @@ def process_data(input_path):
                 im.save(frames_dir / camera_type / f"{t:03d}.jpg")
 
         trajectory = {"states": np.array(states), "actions_pos": np.array(actions_pos), "actions_vel": np.array(actions_vel), "text": ""} #, "depths": np.array(depths), "pointclouds": np.array(pointclouds) }
-        np.save(f"{traj_dir}/trajectory.npy", trajectory)
+        np.savez(f"{traj_dir}/trajectory.npz", **trajectory)
 
         for camera_type in camera_types:
             subprocess.run([

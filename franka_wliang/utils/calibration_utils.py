@@ -8,6 +8,7 @@ import numpy as np
 from cv2 import aruco
 from scipy.spatial.transform import Rotation as R
 from copy import deepcopy
+import shutil
 
 from franka_wliang.utils.parameters import hand_camera_id, ARUCO_DICT, CHARUCOBOARD_ROWCOUNT, CHARUCOBOARD_COLCOUNT, CHARUCOBOARD_CHECKER_SIZE, CHARUCOBOARD_MARKER_SIZE
 from franka_wliang.utils.geometry_utils import pose_diff, change_pose_frame
@@ -63,6 +64,10 @@ def check_calibration_info(required_ids, time_threshold=3600):
             info_dict["old"].append(cam_id)
 
     return info_dict
+
+
+def save_calibration_info(save_path):
+    shutil.copyfile(calib_info_filepath, save_path)
 
 
 def visualize_calibration(calibration_dict):
@@ -651,6 +656,7 @@ def calibrate_camera(
         env.reset()
     controller.reset_state()
 
+    print("Move the gripper and board to a clear starting position, press A when ready")
     while True:
         # Collect Controller Info #
         controller_info = controller.get_info()
@@ -669,7 +675,7 @@ def calibrate_camera(
 
         # Get Action #
         action = controller.forward({"robot_state": state})
-        action[-1] = 0  # Keep gripper open
+        # action[-1] = 0  # Keep gripper open
 
         # Regularize Control Frequency #
         comp_time = time.time() - start_time
@@ -697,10 +703,12 @@ def calibrate_camera(
     pose_origin = state["cartesian_position"]
     i = 0
 
+    print("Starting calibration...")
     while True:
         # Check For Termination #
         controller_info = controller.get_info()
         if controller_info["failure"]:
+            print("Calibration cancelled!")
             return False
 
         # Start #
@@ -730,7 +738,8 @@ def calibrate_camera(
         # Move To Desired Next Pose #
         calib_pose = calibration_traj(i * step_size, hand_camera=hand_camera)
         desired_pose = change_pose_frame(calib_pose, pose_origin)
-        action = np.concatenate([desired_pose, [0]])
+        # action = np.concatenate([desired_pose, [0]])
+        action = np.concatenate([desired_pose, [1]])
         env.update_robot(action, action_space="cartesian_position", blocking=False)
 
         # Regularize Control Frequency #

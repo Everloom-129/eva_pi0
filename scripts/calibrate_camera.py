@@ -1,22 +1,22 @@
 
 import argparse
-import cv2
-import numpy as np
-from tqdm import tqdm
 import threading
+import numpy as np
+import cv2
 
 from franka_wliang.controllers.occulus import Occulus
 from franka_wliang.env import FrankaEnv
 from franka_wliang.runner import Runner
-from franka_wliang.utils.misc_utils import run_threaded_command, keyboard_listener
+from franka_wliang.utils.misc_utils import run_threaded_command
 
 
-def collect_trajectory(runner: Runner, n_traj=1, practice=False):
+def calibrate_camera(runner: Runner, camera_id):
     stop_camera_feed = threading.Event()
     def display_camera_feed():
         while not stop_camera_feed.is_set():
             try:
                 camera_feed, cam_ids = runner.get_camera_feed()
+                camera_feed = [feed for i, feed in enumerate(camera_feed) if str(camera_id) in cam_ids[i] ]
             except:
                 continue
             cols = [np.vstack(camera_feed[i:i+2]) for i in range(0, len(camera_feed), 2)]
@@ -27,29 +27,23 @@ def collect_trajectory(runner: Runner, n_traj=1, practice=False):
         cv2.destroyAllWindows()
     display_thread = run_threaded_command(display_camera_feed)
 
-    with keyboard_listener() as keyboard:
-        for _ in tqdm(range(n_traj), disable=(n_traj == 1)):
-            runner.collect_trajectory(practice=practice)
+    runner.set_calibration_mode(camera_id)
+    success = runner.calibrate_camera(camera_id, reset_robot=False)
+    if success:
+        print("Calibration complete!")
+    else:
+        print("Calibration failed")
 
-            print("Ready to reset, press any key or controller button...")
-            while True:
-                controller_info = runner.get_controller_info()
-                if controller_info["success"] or controller_info["failure"] or keyboard["pressed"] is not None:
-                    break
-            runner.reset_robot()
-            print("done reset")
-    
     stop_camera_feed.set()
     display_thread.join()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-n", "--n_traj", type=int, default=1)
-    parser.add_argument("--practice", action="store_true")
+    parser.add_argument("-c", "--camera_id", type=str)
     args = parser.parse_args()
 
     env = FrankaEnv()
     controller = Occulus()
     runner = Runner(env=env, controller=controller)
-    collect_trajectory(runner, n_traj=args.n_traj, practice=args.practice)
+    calibrate_camera(runner, args.camera_id)

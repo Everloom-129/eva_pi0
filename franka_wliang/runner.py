@@ -4,9 +4,11 @@ from copy import deepcopy
 from datetime import datetime
 import cv2
 import h5py
+from pathlib import Path
+import shutil
 
 from franka_wliang.utils.trajectory_utils import collect_trajectory
-from franka_wliang.utils.calibration_utils import calibrate_camera, check_calibration_info
+from franka_wliang.utils.calibration_utils import calibrate_camera, check_calibration_info, save_calibration_info
 from franka_wliang.utils.parameters import hand_camera_id, code_version, robot_serial_number, robot_type
 
 data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../data")
@@ -20,7 +22,6 @@ class Runner:
 
         self.last_traj_path = None
         self.traj_running = False
-        self.traj_saved = False
         self.obs_pointer = {}
 
         # Get Camera Info #
@@ -67,24 +68,26 @@ class Runner:
         self.env.camera_reader.set_trajectory_mode()
 
     def collect_trajectory(self, info=None, practice=False, reset_robot=True):
-        self.last_traj_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        traj_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-        if info is None:
-            info = {}
-        info["time"] = self.last_traj_name
+        info = {} if info is None else info
+        info["time"] = traj_name
         info["robot_serial_number"] = f"{robot_type}-{robot_serial_number}"
         info["version_number"] = code_version
 
-        if practice or (not self.save_data):
+        if practice or not self.save_data:
             save_filepath = None
-            recording_folderpath = None
+            recording_dir = None
         else:
             if len(self.full_cam_ids) != 6:
                 raise ValueError("WARNING: User is trying to collect data without all three cameras running!")
-            save_filepath = os.path.join(self.failure_logdir, info["time"], "trajectory.h5")
-            recording_folderpath = os.path.join(self.failure_logdir, info["time"], "recordings")
-            if not os.path.isdir(recording_folderpath):
-                os.makedirs(recording_folderpath)
+            
+            save_dir = os.path.join(self.failure_logdir, traj_name)  # Assume failure first, move to success post-run
+            recording_dir = os.path.join(save_dir, "recordings")
+            save_filepath = os.path.join(save_dir, "trajectory.h5")
+            os.makedirs(save_dir, exist_ok=True)
+            os.makedirs(recording_dir, exist_ok=True)
+            save_calibration_info(os.path.join(self.failure_logdir, info["time"], "calibration.json"))
 
         # Collect Trajectory #
         self.traj_running = True
@@ -96,19 +99,21 @@ class Runner:
             policy=self.policy,
             obs_pointer=self.obs_pointer,
             reset_robot=reset_robot,
-            recording_folderpath=recording_folderpath,
+            recording_folderpath=recording_dir,
             save_filepath=save_filepath,
             wait_for_controller=True,
         )
         self.traj_running = False
         self.obs_pointer = {}
 
-        # Sort Trajectory #
-        self.traj_saved = controller_info["success"] and (save_filepath is not None)
-
-        if self.traj_saved:
-            self.last_traj_path = os.path.join(self.success_logdir, info["time"])
-            os.rename(os.path.join(self.failure_logdir, info["time"]), self.last_traj_path)
+        if save_filepath is not None:
+            if controller_info["success"]:
+                new_save_dir = os.path.join(self.success_logdir, traj_name)
+                shutil.move(save_dir, new_save_dir)
+                save_dir = new_save_dir
+        
+        self.last_traj_name = traj_name
+        self.last_traj_path = save_dir
 
     def calibrate_camera(self, cam_id, reset_robot=True):
         self.traj_running = True

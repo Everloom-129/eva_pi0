@@ -56,6 +56,7 @@ class TimestepProcessor:
 
         for serial_number in sorted_camera_ids:
             cam_type = camera_type_dict[serial_number]
+            # import ipdb; ipdb.set_trace()
             if cam_type not in self.camera_extrinsics:
                 continue
 
