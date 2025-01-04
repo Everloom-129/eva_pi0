@@ -1,1 +1,12 @@
 data/
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
+
+eggs/
+.eggs/
+*.egg-info/
+.vscode/
+
