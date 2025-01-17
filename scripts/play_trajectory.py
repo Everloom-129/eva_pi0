@@ -10,6 +10,37 @@ from franka_wliang.env import FrankaEnv
 from franka_wliang.runner import Runner
 from franka_wliang.utils.misc_utils import run_threaded_command, keyboard_listener
 import h5py
+import pdb
+# class PolicyWrapper:
+#     def __init__(
+#         self,
+#         traj_path: str,
+#     ):  
+#         self.phase = 0
+#         self.max_phase = 4
+#         self.threshold = 0.45
+#         self.deylay_period = 15
+#         self.name = "trajectory_replay"
+
+#         # self.traj = np.load("testaction.npy", allow_pickle=True).item()["actions"]
+#         if traj_path.endswith(".npz"):
+#             self.traj = np.load(traj_path)["actions_vel"] # shape (num_timesteps, 7)
+#             # self.traj = np.zeros((1000, 7)) # dummy action
+#         elif traj_path.endswith(".npy"):
+#             self.traj = np.load(traj_path)
+#         else:
+#             raise NotImplementedError("Only support npz or npy files for now")
+#         self.traj_len = self.traj.shape[0]
+#         self.count = 0
+#         print("USING TRAJECTORY REPLAY POLICY WRAPPER!!!!!!!!!!!!!")
+
+#     def forward(self, observation, info=None):
+#         action = self.traj[min(self.count, self.traj_len - 1)]
+#         print("action: ", action)
+#         assert action.shape == (7,) # assume action is cartesian velocity
+#         self.count += 1
+#         return action
+    
 
 class PolicyWrapper:
     def __init__(
@@ -26,17 +57,29 @@ class PolicyWrapper:
         if traj_path.endswith(".npz"):
             self.traj = np.load(traj_path)["actions_vel"] # shape (num_timesteps, 7)
             # self.traj = np.zeros((1000, 7)) # dummy action
+        elif traj_path.endswith(".npy"):
+            self.traj = np.load(traj_path)
         else:
-            raise NotImplementedError("Only support npz files for now")
+            raise NotImplementedError("Only support npz or npy files for now")
+        # add a zeros array of shape (150, 7) in front to account for delayed response.
+        self.traj = np.concatenate([np.zeros((75, 7)), self.traj], axis=0) 
         self.traj_len = self.traj.shape[0]
         self.count = 0
         print("USING TRAJECTORY REPLAY POLICY WRAPPER!!!!!!!!!!!!!")
 
     def forward(self, observation, info=None):
-        action = self.traj[min(self.count, self.traj_len - 1)]
-        print("action: ", action)
+        cur_ee_pos = np.zeros((7,))
+        cur_ee_pos[:6] = observation["robot_state"]["cartesian_position"]
+        print("count: ", self.count)
+        if self.count < 75:
+            action = self.traj[min(self.count, self.traj_len - 1)]
+        else:
+            print("normal action starts!!")
+            print("traje: ", self.traj[min(self.count, self.traj_len - 1)])
+            action = self.traj[min(self.count, self.traj_len - 1)] - cur_ee_pos
         assert action.shape == (7,) # assume action is cartesian velocity
         self.count += 1
+        print("action: ", action)
         return action
 
 def play_trajectory(runner: Runner, traj_path: str):
@@ -71,7 +114,10 @@ def play_trajectory(runner: Runner, traj_path: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--traj_path", default="/home/franka/franka_wliang/data/success/2025-01-04/2025-01-04_16-57-08/trajectory.npz", type=str)
+    # parser.add_argument("--traj_path", default="/home/franka/franka_wliang/2025-01-05_20-00-37_trajectory_1.npy", type=str)
+    # parser.add_argument("--traj_path", default="/home/franka/franka_wliang/data/success/2025-01-04/2025-01-04_16-57-08/trajectory.npz", type=str)
+    parser.add_argument("--traj_path", default="/home/franka/franka_wliang/trajectory_1_01-07_23-23-06.npy", type=str)
+
     args = parser.parse_args()
 
     env = FrankaEnv()

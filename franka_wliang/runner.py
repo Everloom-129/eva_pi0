@@ -38,6 +38,7 @@ class Runner:
             save_traj_dir = data_dir
         self.success_logdir = os.path.join(save_traj_dir, "success", datetime.now().strftime("%Y-%m-%d"))
         self.failure_logdir = os.path.join(save_traj_dir, "failure", datetime.now().strftime("%Y-%m-%d"))
+        self.eval_logdir = os.path.join(save_traj_dir, "eval", datetime.now().strftime("%Y-%m-%d"))
         if not os.path.isdir(self.success_logdir):
             os.makedirs(self.success_logdir)
         if not os.path.isdir(self.failure_logdir):
@@ -125,16 +126,23 @@ class Runner:
         info["time"] = traj_name
         info["robot_serial_number"] = f"{robot_type}-{robot_serial_number}"
         info["version_number"] = code_version
-        
-        recording_dir = None
-        save_filepath = None
 
+        save_dir = os.path.join(self.eval_logdir, traj_name)  # Assume failure first, move to success post-run
+        recording_dir = os.path.join(save_dir, "recordings")
+        save_filepath = os.path.join(save_dir, "trajectory.h5")
+        os.makedirs(save_dir, exist_ok=True)
+        os.makedirs(recording_dir, exist_ok=True)
+        save_calibration_info(os.path.join(self.eval_logdir, info["time"], "calibration.json"))
 
+        self.traj_running = True
+        self.env._robot.establish_connection()
+        input("Press any button on the keyboard AND hold the VR controller button to start replaying trajectory...")
         controller_info = collect_trajectory(
             self.env,
             controller=self.controller,
             metadata=info,
             policy=policy_wrapper,
+            horizon=policy_wrapper.traj_len - 1,
             obs_pointer=self.obs_pointer,
             reset_robot=reset_robot,
             recording_folderpath=recording_dir,
@@ -146,12 +154,12 @@ class Runner:
 
         # if save_filepath is not None:
         #     if controller_info["success"]:
-        #         new_save_dir = os.path.join(self.success_logdir, traj_name)
+        #         new_save_dir = os.path.join(self.eval_logdir, traj_name)
         #         shutil.move(save_dir, new_save_dir)
         #         save_dir = new_save_dir
         
         self.last_traj_name = traj_name
-        # self.last_traj_path = save_dir
+        self.last_traj_path = save_dir
 
     def calibrate_camera(self, cam_id, reset_robot=True):
         self.traj_running = True

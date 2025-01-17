@@ -10,7 +10,9 @@ robot_serial_number = ""
 
 ##### CAMERAS #####
 hand_camera_id = '14436910'
-varied_camera_1_id = '25455306'
+# varied_camera_1_id = '25455306'
+# varied_camera_2_id = '27085680'
+varied_camera_1_id = '26368109'
 varied_camera_2_id = '27085680'
 
 camera_type_dict = {
