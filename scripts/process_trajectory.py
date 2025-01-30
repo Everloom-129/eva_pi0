@@ -75,7 +75,10 @@ def process_data(input_path):
             step_t = traj[t]
             states.append(step_t["observation"]["state"])
             actions_pos.append(step_t["action"]["cartesian_position"])
-            actions_vel.append(step_t["action"]["cartesian_velocity"])
+            try:
+                actions_vel.append(step_t["action"]["cartesian_velocity"])
+            except KeyError:
+                print("No action velocity saved. You are probably using cartesian_position mode.")
             # depths.append(step_t['observation']['camera']['depth']['fixed_camera'][0])
             # pointclouds.append(step_t['observation']['camera']['pointcloud']['fixed_camera'][0])
             

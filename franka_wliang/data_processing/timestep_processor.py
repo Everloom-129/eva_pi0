@@ -120,9 +120,14 @@ class TimestepProcessor:
             processed_timestep["action"] = {}
             for action_space in ["cartesian_position", "joint_position", "cartesian_velocity", "joint_velocity"]:
                 arm_action = timestep["action"][action_space]
-                gripper_action = timestep["action"][("gripper_velocity" if "velocity" in action_space else "gripper_position")]
-                action = np.concatenate([arm_action, [gripper_action]], dtype=self.action_dtype)
-                processed_timestep["action"][action_space] = action
+                try:
+                    gripper_action = timestep["action"][("gripper_velocity" if "velocity" in action_space else "gripper_position")]
+                    action = np.concatenate([arm_action, [gripper_action]], dtype=self.action_dtype)
+                    processed_timestep["action"][action_space] = action
+                except KeyError:
+                    # if action mode is cartesian_position, there's no "gripper_velocity" in timestep["action"].
+                    # check create_action_dict function in R2D2_pal_internal on NUC for more detail.
+                    continue
 
         # return raw information + meta data
         processed_timestep["extrinsics_dict"] = extrinsics_dict
