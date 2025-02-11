@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 
 from franka_wliang.utils.trajectory_utils import load_trajectory
+from franka_wliang.utils.misc_utils import get_latest_trajectory
 from franka_wliang.data_processing.timestep_processor import TimestepProcessor
 
 
@@ -21,8 +22,11 @@ def extract_image(trajectory, camera_type):
 
 
 def process_data(input_path):
-    data_dirs = glob.glob(str(input_path) + "*/**/", recursive=True)
-    data_dirs = [d for d in data_dirs if os.path.exists(os.path.join(d, "trajectory.h5"))]
+    if input_path is None:
+        data_dirs = [get_latest_trajectory()]
+    else:
+        data_dirs = glob.glob(str(input_path) + "*/**/", recursive=True)
+        data_dirs = [d for d in data_dirs if os.path.exists(os.path.join(d, "trajectory.h5"))]
 
     image_transform = {"remove_alpha": True, "bgr_to_rgb": True, "augment": False}
     camera_kwargs = {}
@@ -110,15 +114,8 @@ def process_data(input_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("input_path", type=str)
+    parser.add_argument("input_path", type=str, nargs="?", default=None)
     args = parser.parse_args()
 
-
-    # data_folder = "/home/franka/R2D2_llm/data/success/2024-11-27"#"/home/franka/R2D2_pal_internal/data/2024-06-06-demo"#"/home/franka/R2D2_pal_internal/data/5-22-pour-water-in-pot"
-    # datapath = "/home/franka/R2D2_llm/processed_data/2024-11-27"  #2024-09-24-combined  test_depth    #"/home/franka/R2D2_pal_internal/processed_data/5-22-pour-water-in-pot-velocity"
-    # data_folder = "/home/franka/R2D2_llm/data/failure/2024-12-01"#"/home/franka/R2D2_pal_internal/data/2024-06-06-demo"#"/home/franka/R2D2_pal_internal/data/5-22-pour-water-in-pot"
-    # datapath = "/home/franka/R2D2_llm/processed_data/2024-12-01"  #2024-09-24-combined  test_depth    #"/home/franka/R2D2_pal_internal/processed_data/5-22-pour-water-in-pot-velocity"
-    # data_folder = "/home/franka/R2D2_llm/data/failure/2024-12-09"#"/home/franka/R2D2_pal_internal/data/2024-06-06-demo"#"/home/franka/R2D2_pal_internal/data/5-22-pour-water-in-pot"
-    # datapath = "/home/franka/R2D2_llm/processed_data/2024-12-09"  #2024-09-24-combined  test_depth    #"/home/franka/R2D2_pal_internal/processed_data/5-22-pour-water-in-pot-velocity"
-
-    process_data(Path(args.input_path))
+    path = None if args.input_path is None else Path(args.input_path)
+    process_data(path)
