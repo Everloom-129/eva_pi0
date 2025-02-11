@@ -4,7 +4,11 @@ import subprocess
 import threading
 from pynput import keyboard
 from contextlib import contextmanager
+from pathlib import Path
+import os
+import glob
 
+data_dir = Path(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../../data"))
 
 def time_ms():
     return time.time_ns() // 1_000_000
@@ -40,3 +44,16 @@ def keyboard_listener():
         yield key
     finally:
         listener.stop()
+
+def get_latest_trajectory():
+    data_dirs = glob.glob(str(data_dir) + "*/**/", recursive=True)
+    data_dirs = [d for d in data_dirs if os.path.exists(os.path.join(d, "trajectory.h5"))]
+    data_dirs.sort(key=os.path.getmtime)
+    data_dirs = data_dirs[-1:]
+    return data_dirs[0]
+
+def get_latest_image():
+    data_dirs = glob.glob(str(data_dir) + "/images/*")
+    data_dirs.sort(key=os.path.getmtime)
+    data_dirs = data_dirs[-1:]
+    return data_dirs[0]
