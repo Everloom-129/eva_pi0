@@ -16,10 +16,8 @@ class FrankaEnv(gym.Env):
         super().__init__()
 
         # Define Action Space #
-        assert action_space in ["cartesian_position", "joint_position", "cartesian_velocity", "joint_velocity"]
-        self.action_space = action_space
+        self.set_action_space(action_space)
         self.gripper_action_space = gripper_action_space
-        self.check_action_range = "velocity" in action_space
 
         # Robot Configuration
         self.reset_joints = np.array([0, -1 / 5 * np.pi, 0, -4 / 5 * np.pi, 0, 3 / 5 * np.pi, 0.0])
@@ -27,7 +25,6 @@ class FrankaEnv(gym.Env):
         # self.randomize_high = np.array([0.1, 0.2, 0.1, 0.3, 0.3, 0.3])
         self.randomize_low = np.array([0, 0, 0, 0, 0, 0])
         self.randomize_high = np.array([0, 0, 0, 0, 0, 0])
-        self.DoF = 7 if ("cartesian" in action_space) else 8
         self.control_hz = 15
 
         if nuc_ip is None:
@@ -131,3 +128,13 @@ class FrankaEnv(gym.Env):
         obs_dict["camera_intrinsics"] = intrinsics
 
         return obs_dict
+    
+    def set_action_space(self, action_space):
+        print(f"Set action space to {action_space}")
+        assert action_space in ["cartesian_position", "joint_position", "cartesian_velocity", "joint_velocity"]
+        self.action_space = action_space
+        self.check_action_range = "velocity" in action_space
+        self.DoF = 7 if ("cartesian" in action_space) else 8
+
+    def close(self):
+        self._robot.server.close()

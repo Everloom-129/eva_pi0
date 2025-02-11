@@ -43,6 +43,7 @@ class Occulus:
         self.reset_state()
 
         # Start State Listening Thread #
+        self.running = True
         run_threaded_command(self._update_internal_state)
 
     def reset_state(self):
@@ -60,7 +61,7 @@ class Occulus:
 
     def _update_internal_state(self, num_wait_sec=5, hz=50):
         last_read_time = time.time()
-        while True:
+        while self.running:
             # Regulate Read Frequency #
             time.sleep(1 / hz)
 
@@ -192,3 +193,7 @@ class Occulus:
             else:
                 return action
         return self._calculate_action(obs_dict["robot_state"], include_info=include_info)
+    
+    def close(self):
+        self.running = False
+        self.oculus_reader.stop()

@@ -9,6 +9,7 @@ from franka_wliang.controllers.occulus import Occulus
 from franka_wliang.env import FrankaEnv
 from franka_wliang.runner import Runner
 from franka_wliang.utils.misc_utils import run_threaded_command, keyboard_listener
+from franka_wliang.manager import load_runner
 
 
 def collect_trajectory(runner: Runner, n_traj=1, practice=False):
@@ -37,7 +38,6 @@ def collect_trajectory(runner: Runner, n_traj=1, practice=False):
                 if controller_info["success"] or controller_info["failure"] or keyboard["pressed"] is not None:
                     break
             runner.reset_robot()
-            print("done reset")
     
     stop_camera_feed.set()
     display_thread.join()
@@ -47,9 +47,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--n_traj", type=int, default=1)
     parser.add_argument("--practice", action="store_true")
+    parser.add_argument("--action_space", default="cartesian_velocity")
     args = parser.parse_args()
 
-    env = FrankaEnv()
-    controller = Occulus()
-    runner = Runner(env=env, controller=controller)
+    runner = load_runner()
+    runner.set_action_space(args.action_space)
     collect_trajectory(runner, n_traj=args.n_traj, practice=args.practice)

@@ -10,10 +10,9 @@ from datetime import datetime
 from franka_wliang.controllers.occulus import Occulus
 from franka_wliang.env import FrankaEnv
 from franka_wliang.runner import Runner
-from franka_wliang.utils.misc_utils import run_threaded_command, keyboard_listener
+from franka_wliang.utils.misc_utils import run_threaded_command, keyboard_listener, data_dir
+from franka_wliang.manager import load_runner
 
-
-data_dir = Path(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../data"))
 
 def take_pictures(runner: Runner):
     try:
@@ -30,7 +29,5 @@ def take_pictures(runner: Runner):
 
 
 if __name__ == "__main__":
-    env = FrankaEnv()
-    controller = Occulus()
-    runner = Runner(env=env, controller=controller)
+    runner = load_runner()
     take_pictures(runner)

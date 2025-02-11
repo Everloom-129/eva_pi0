@@ -9,9 +9,8 @@ import shutil
 
 from franka_wliang.utils.trajectory_utils import collect_trajectory
 from franka_wliang.utils.calibration_utils import calibrate_camera, check_calibration_info, save_calibration_info
+from franka_wliang.utils.misc_utils import data_dir
 from franka_wliang.utils.parameters import hand_camera_id, code_version, robot_serial_number, robot_type
-
-data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../data")
 
 
 class Runner:
@@ -136,7 +135,6 @@ class Runner:
 
         self.traj_running = True
         self.env._robot.establish_connection()
-        input("Press any button on the keyboard AND hold the VR controller button to start replaying trajectory...")
         controller_info = collect_trajectory(
             self.env,
             controller=self.controller,
@@ -190,6 +188,15 @@ class Runner:
         for cam_id in all_cam_ids:
             img = cv2.cvtColor(obs["image"][cam_id], cv2.COLOR_BGRA2RGB)
             gui_images.append(img)
+        
+        # depth_cam_ids = list(obs["depth"].keys())
+        # depth_cam_ids.sort()
+        # import numpy as np
+        # for cam_id in depth_cam_ids:
+        #     depth = np.nan_to_num(obs["depth"][cam_id])
+        #     img = cv2.cvtColor(depth, cv2.COLOR_BGRA2RGB)
+        #     gui_images.append(img)
+        # all_cam_ids.extend([id+"_depth" for id in depth_cam_ids])
 
         return gui_images, all_cam_ids
 
@@ -223,3 +230,10 @@ class Runner:
             os.rename(self.last_traj_path, new_traj_path)
             self.last_traj_path = new_traj_path
             self.traj_saved = False
+    
+    def set_action_space(self, action_space):
+        self.env.set_action_space(action_space)
+
+    def close(self):
+        self.env.close()
+        self.controller.close()

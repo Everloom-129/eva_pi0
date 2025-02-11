@@ -8,7 +8,7 @@ from franka_wliang.controllers.occulus import Occulus
 from franka_wliang.env import FrankaEnv
 from franka_wliang.runner import Runner
 from franka_wliang.utils.misc_utils import run_threaded_command
-
+from franka_wliang.manager import load_runner
 
 def calibrate_camera(runner: Runner, camera_id):
     stop_camera_feed = threading.Event()
@@ -43,7 +43,5 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--camera_id", type=str)
     args = parser.parse_args()
 
-    env = FrankaEnv()
-    controller = Occulus()
-    runner = Runner(env=env, controller=controller)
+    runner = load_runner()
     calibrate_camera(runner, args.camera_id)
