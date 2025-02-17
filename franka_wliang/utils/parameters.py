@@ -5,14 +5,14 @@ nuc_ip = '172.16.0.4'
 robot_ip = '172.16.0.2'
 laptop_ip = "127.0.0.1"
 sudo_password = 'robotlearning'
-robot_type = "panda"  # 'panda' or 'fr3'
+robot_type = "fr3"  # 'panda' or 'fr3'
 robot_serial_number = ""
 
 ##### CAMERAS #####
 hand_camera_id = '14436910'
-# varied_camera_1_id = '25455306'
+varied_camera_1_id = '25455306'
 # varied_camera_2_id = '27085680'
-varied_camera_1_id = '26368109'
+# varied_camera_1_id = '26368109'
 varied_camera_2_id = '27085680'
 
 camera_type_dict = {
@@ -32,6 +32,7 @@ def get_camera_type(cam_id):
     type_int = camera_type_dict[cam_id]
     type_str = camera_type_to_string_dict[type_int]
     return type_str
+
 
 ##### CHARUCO BOARD #####
 CHARUCOBOARD_ROWCOUNT = 9

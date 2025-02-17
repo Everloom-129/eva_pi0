@@ -19,7 +19,7 @@ class MultiCameraWrapper:
         # Set Correct Parameters #
         for cam_id in self.camera_dict.keys():
             cam_type = get_camera_type(cam_id)
-            curr_cam_kwargs = camera_kwargs.get(cam_type, {})
+            curr_cam_kwargs = camera_kwargs[cam_type]
             self.camera_dict[cam_id].set_reading_parameters(**curr_cam_kwargs)
 
         # Launch Camera #
@@ -133,7 +133,7 @@ class RecordedMultiCameraWrapper:
 
         for cam_id in all_cam_ids:
             cam_type = camera_type_dict[cam_id]
-            curr_cam_kwargs = self.camera_kwargs.get(cam_type, {})
+            curr_cam_kwargs = self.camera_kwargs[cam_type]
             self.camera_dict[cam_id].set_reading_parameters(**curr_cam_kwargs)
 
             timestamp = timestamp_dict.get(cam_id + "_frame_received", None)

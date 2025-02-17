@@ -1,17 +1,22 @@
 
 from multiprocessing.managers import BaseManager
+from collections import defaultdict
 
 from franka_wliang.controllers.occulus import Occulus
 from franka_wliang.env import FrankaEnv
 from franka_wliang.runner import Runner
+from collections import defaultdict
 
 
 class RunnerManager(BaseManager):
     pass
 
 
-def start_runner(control_mode="cartesian_velocity"):
-    env = FrankaEnv(control_mode)
+def start_runner(control_mode="cartesian_velocity", record_depth=False, record_pcd=False):
+    camera_kwargs = defaultdict(
+        lambda: {"depth": record_depth, "pointcloud": record_pcd}
+    )
+    env = FrankaEnv(control_mode, camera_kwargs=camera_kwargs)
     controller = Occulus()
     runner = Runner(env=env, controller=controller)
 

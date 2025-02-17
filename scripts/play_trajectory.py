@@ -12,21 +12,7 @@ from franka_wliang.utils.misc_utils import run_threaded_command, keyboard_listen
 from franka_wliang.manager import load_runner
 
 def play_trajectory(runner: Runner, traj_path: str, action_space: str):
-    stop_camera_feed = threading.Event()
-    def display_camera_feed():
-        while not stop_camera_feed.is_set():
-            try:
-                camera_feed, cam_ids = runner.get_camera_feed()
-            except:
-                continue
-            cols = [np.vstack(camera_feed[i:i+2]) for i in range(0, len(camera_feed), 2)]
-            grid = np.hstack(cols)
-            cv2.imshow("Camera Feed", cv2.cvtColor(cv2.resize(grid, (0, 0), fx=0.5, fy=0.5), cv2.COLOR_RGB2BGR))
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
-        cv2.destroyAllWindows()
-    display_thread = run_threaded_command(display_camera_feed)
-
+    runner.display_camera_feed()
     policy = Replayer(traj_path, action_space)
 
     with keyboard_listener() as keyboard:
@@ -38,9 +24,6 @@ def play_trajectory(runner: Runner, traj_path: str, action_space: str):
                 break
         runner.reset_robot()
         print("done reset")
-    
-    stop_camera_feed.set()
-    display_thread.join()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

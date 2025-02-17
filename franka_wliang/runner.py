@@ -6,10 +6,12 @@ import cv2
 import h5py
 from pathlib import Path
 import shutil
+import threading
+import numpy as np
 
 from franka_wliang.utils.trajectory_utils import collect_trajectory
 from franka_wliang.utils.calibration_utils import calibrate_camera, check_calibration_info, save_calibration_info
-from franka_wliang.utils.misc_utils import data_dir
+from franka_wliang.utils.misc_utils import data_dir, run_threaded_command
 from franka_wliang.utils.parameters import hand_camera_id, code_version, robot_serial_number, robot_type
 
 
@@ -31,6 +33,9 @@ class Runner:
         self.num_cameras = len(full_cam_ids)
         self.full_cam_ids = full_cam_ids
         self.advanced_calibration = False
+
+        self.stop_camera_feed = None
+        self.display_thread = None
 
         # Make Sure Log Directorys Exist #
         if save_traj_dir is None:
@@ -209,6 +214,41 @@ class Runner:
             obs = self.env.read_cameras()[0]
         gui_images, cam_ids = self.get_gui_imgs(obs)
         return gui_images, cam_ids
+    
+    def get_obs(self):
+        if self.traj_running:
+            if "image" not in self.obs_pointer:
+                raise ValueError
+            obs = deepcopy(self.obs_pointer)
+        else:
+            obs = self.env.read_cameras()[0]
+        return obs
+    
+    def get_state(self):
+        return self.env.get_observation()
+
+    def display_camera_feed(self, camera_id=None):
+        self.stop_camera_feed = threading.Event()
+        def display_thread():
+            while not self.stop_camera_feed.is_set():
+                try:
+                    camera_feed, cam_ids = self.get_camera_feed()
+                    if camera_id is not None:
+                        camera_feed = [feed for i, feed in enumerate(camera_feed) if str(camera_id) in cam_ids[i] ]
+                except:
+                    continue
+                cols = [np.vstack(camera_feed[i:i+2]) for i in range(0, len(camera_feed), 2)]
+                grid = np.hstack(cols)
+                cv2.imshow("Camera Feed", cv2.cvtColor(cv2.resize(grid, (0, 0), fx=0.5, fy=0.5), cv2.COLOR_RGB2BGR))
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+            cv2.destroyAllWindows()
+        self.display_thread = run_threaded_command(display_thread)
+    
+    def close_camera_feed(self):
+        if self.stop_camera_feed is not None and self.display_thread is not None:
+            self.stop_camera_feed.set()
+            self.display_thread.join()
 
     def change_trajectory_status(self, success=False):
         if (self.last_traj_path is None) or (success == self.traj_saved):
@@ -235,5 +275,6 @@ class Runner:
         self.env.set_action_space(action_space)
 
     def close(self):
+        self.close_camera_feed()
         self.env.close()
         self.controller.close()

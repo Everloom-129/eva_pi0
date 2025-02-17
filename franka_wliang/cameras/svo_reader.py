@@ -106,7 +106,7 @@ class SVOReader:
 
         # Check Image Timestamp #
         received_time = self._cam.get_timestamp(sl.TIME_REFERENCE.IMAGE).get_milliseconds()
-        assert correct_timestamp is None or correct_timestamp == received_time
+        assert correct_timestamp is None or correct_timestamp == received_time  # TODO check why this is erroring!
 
         # Return Data #
         data_dict = {}
@@ -122,18 +122,20 @@ class SVOReader:
                     self.serial_number + "_left": self._process_frame(self._left_img),
                     self.serial_number + "_right": self._process_frame(self._right_img),
                 }
-        # if self.depth:
-        # 	self._cam.retrieve_measure(self._left_depth, sl.MEASURE.DEPTH, resolution=self.resolution)
-        # 	self._cam.retrieve_measure(self._right_depth, sl.MEASURE.DEPTH_RIGHT, resolution=self.resolution)
-        # 	data_dict['depth'] = {
-        # 		self.serial_number + '_left': self._left_depth.get_data().copy(),
-        # 		self.serial_number + '_right': self._right_depth.get_data().copy()}
-        # if self.pointcloud:
-        # 	self._cam.retrieve_measure(self._left_pointcloud, sl.MEASURE.XYZRGBA, resolution=self.resolution)
-        # 	self._cam.retrieve_measure(self._right_pointcloud, sl.MEASURE.XYZRGBA_RIGHT, resolution=self.resolution)
-        # 	data_dict['pointcloud'] = {
-        # 		self.serial_number + '_left': self._left_pointcloud.get_data().copy(),
-        # 		self.serial_number + '_right': self._right_pointcloud.get_data().copy()}
+        if self.depth:
+            self._cam.retrieve_measure(self._left_depth, sl.MEASURE.DEPTH, resolution=self.zed_resolution)
+            # self._cam.retrieve_measure(self._right_depth, sl.MEASURE.DEPTH_RIGHT, resolution=self.resolution)
+            data_dict['depth'] = {
+                self.serial_number + '_left': self._left_depth.get_data().copy(),
+                # self.serial_number + '_right': self._right_depth.get_data().copy()
+            }
+        if self.pointcloud:
+            self._cam.retrieve_measure(self._left_pointcloud, sl.MEASURE.XYZRGBA, resolution=self.zed_resolution)
+            # self._cam.retrieve_measure(self._right_pointcloud, sl.MEASURE.XYZRGBA_RIGHT, resolution=self.resolution)
+            data_dict['pointcloud'] = {
+                self.serial_number + '_left': self._left_pointcloud.get_data().copy(),
+                # self.serial_number + '_right': self._right_pointcloud.get_data().copy()
+            }
 
         if return_timestamp:
             return data_dict, received_time
