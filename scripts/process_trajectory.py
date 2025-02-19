@@ -41,7 +41,7 @@ def process_data(input_path, process_depth=False, process_pcd=False):
     # else:
     #     data_dirs = glob.glob(str(input_path) + "*/**/", recursive=True)
     #     data_dirs = [d for d in data_dirs if os.path.exists(os.path.join(d, "trajectory.h5"))]
-
+    print(data_dirs)
     image_transform = {"remove_alpha": True, "bgr_to_rgb": True, "augment": False}
     camera_kwargs = defaultdict(
         lambda: {"depth": process_depth, "pointcloud": process_pcd}
@@ -113,22 +113,7 @@ def process_data(input_path, process_depth=False, process_pcd=False):
                 actions_vel.append(step_t["action"]["cartesian_velocity"])
             except KeyError:
                 print("No action velocity saved. You are probably using cartesian_position mode.")
-            # depths.append(step_t['observation']['camera']['depth']['fixed_camera'][0])
-            # pointclouds.append(step_t['observation']['camera']['pointcloud']['fixed_camera'][0])
-            
-            
-            #rgbd_array_normalized = np.nan_to_num(step_t['observation']['camera']['pointcloud']['fixed_camera'][0], nan=0)
-            #rgbd_array_normalized = (rgbd_array_normalized / np.nanmax(rgbd_array_normalized)) * 255
 
-            if "depth" in traj[t]["observation"]["camera"]:
-                depth_array = np.nan_to_num(step_t['observation']['camera']['depth'], nan=0)
-                dpth_array_min = np.min(depth_array)
-                dpth_array_max = np.max(depth_array)
-                depth_array_normalized = ((depth_array - dpth_array_min) / (dpth_array_max - dpth_array_min)) * 255
-                depth_image = depth_array_normalized.astype(np.uint8)
-                image = Image.fromarray(depth_image)
-                image.save(f"{frames_dir}/{t}_depth_image.png")
-            
             for camera_type in camera_types:
                 im = extract_image(traj[t], camera_type)
                 im.save(frames_dir / camera_type / f"{t:03d}.jpg")
@@ -151,6 +136,18 @@ def process_data(input_path, process_depth=False, process_pcd=False):
             ])
 
 
+def process_data_dir(input_dir):
+    "Calls process_data on all directories in input_dir"
+    input_dir = Path(input_dir)
+    if not input_dir.exists():
+        raise ValueError(f"Input directory {input_dir} does not exist")
+    if not input_dir.is_dir():
+        raise ValueError(f"Input path {input_dir} is not a directory")
+    data_dirs = glob.glob(str(input_dir) + "*/**/", recursive=True)
+    data_dirs = [d for d in data_dirs if os.path.exists(os.path.join(d, "trajectory.h5"))]
+    for data_dir in tqdm(data_dirs):
+        process_data(Path(data_dir))
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("input_path", type=str, nargs="?", default=None)
@@ -159,4 +156,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     path = None if args.input_path is None else Path(args.input_path)
-    process_data(path, args.process_depth, args.process_pcd)
+    # check if path is inidividual directory by checking if trajectory.h5 exists directly under it
+    if path is not None and path.is_dir() and not os.path.exists(os.path.join(path, "trajectory.h5")):
+        process_data_dir(path)
+    else:
+        process_data(path, args.process_depth, args.process_pcd)

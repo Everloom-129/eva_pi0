@@ -21,7 +21,7 @@ class Replayer:
             raise NotImplementedError("ERROR: Trajectory must be in npz or npy format!")
         
         self.traj_len = self.traj.shape[0]
-        self.delay = 60
+        self.delay = 0
         self.t = 0
 
     def forward(self, observation, info=None):

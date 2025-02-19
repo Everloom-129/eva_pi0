@@ -244,11 +244,31 @@ class Runner:
                     break
             cv2.destroyAllWindows()
         self.display_thread = run_threaded_command(display_thread)
-    
+        
+    # def display_camera_feed(self, camera_id=None):
+    #     self.stop_camera_feed = threading.Event()
+    #     def display_thread():
+    #         while not self.stop_camera_feed.is_set():
+    #             try:
+    #                 camera_feed, cam_ids = self.get_camera_feed()
+    #             except:
+    #                 continue
+    #             cols = [np.vstack(camera_feed[i:i+2]) for i in range(0, len(camera_feed), 2)]
+    #             grid = np.hstack(cols)
+    #             cv2.imshow("Camera Feed", cv2.cvtColor(cv2.resize(grid, (0, 0), fx=0.5, fy=0.5), cv2.COLOR_RGB2BGR))
+    #             if cv2.waitKey(1) & 0xFF == ord("q"):
+    #                 break
+    #         cv2.destroyAllWindows()
+    #     self.display_thread = run_threaded_command(display_thread)
+
     def close_camera_feed(self):
+        print("Closing camera feed...")
         if self.stop_camera_feed is not None and self.display_thread is not None:
             self.stop_camera_feed.set()
             self.display_thread.join()
+            self.stop_camera_feed = None
+            self.display_thread = None
+            print("Camera feed closed.")
 
     def change_trajectory_status(self, success=False):
         if (self.last_traj_path is None) or (success == self.traj_saved):

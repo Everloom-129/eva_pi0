@@ -27,3 +27,4 @@ if __name__ == "__main__":
 
     runner = load_runner()
     calibrate_camera(runner, args.camera_id)
+    runner.close_camera_feed()
