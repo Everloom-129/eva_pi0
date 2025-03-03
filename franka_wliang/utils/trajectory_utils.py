@@ -10,10 +10,11 @@ from PIL import Image
 import h5py
 import imageio
 
-from franka_wliang.utils.parameters import camera_type_to_string_dict
+from franka_wliang.data_processing.image_transformer import ImageTransformer
+from franka_wliang.data_processing.timestep_processor import TimestepProcessor
 from franka_wliang.cameras.multi_camera_wrapper import RecordedMultiCameraWrapper
-from franka_wliang.utils.misc_utils import time_ms
-from franka_wliang.utils.misc_utils import run_threaded_command
+from franka_wliang.utils.parameters import camera_type_to_string_dict
+from franka_wliang.utils.misc_utils import time_ms, run_threaded_command
 
 ##############################################################
 
@@ -51,15 +52,26 @@ def write_dict_to_hdf5(hdf5_file, data_dict, keys_to_ignore=["image", "depth", "
 
 
 class TrajectoryWriter:
-    def __init__(self, filepath, metadata=None, exists_ok=False, save_images=True):
+    def __init__(self, filepath, metadata=None, exists_ok=False, post_process=False):
         assert (not os.path.isfile(filepath)) or exists_ok
         self._filepath = filepath
-        self._save_images = save_images
+        self._dirpath = os.path.dirname(filepath)
         self._hdf5_file = h5py.File(filepath, "w")
         self._queue_dict = defaultdict(Queue)
-        self._video_writers = {}
-        self._video_files = {}
         self._open = True
+
+        self.post_process = post_process
+        if self.post_process:
+            image_transform_kwargs = {"remove_alpha": True, "bgr_to_rgb": True, "augment": False}
+            self._timestep_processor = TimestepProcessor(
+                camera_extrinsics=["fixed_camera", "hand_camera", "varied_camera"],
+                image_transform_kwargs=image_transform_kwargs,
+            )
+
+            os.makedirs(os.path.join(self._dirpath, "recordings"), exist_ok=True)
+            self._video_writers = {}
+            self._npz_data = {"states": [], "actions_pos": [], "actions_vel": []}
+            self.t = {}
 
         # Add Metadata #
         if metadata is not None:
@@ -68,13 +80,15 @@ class TrajectoryWriter:
         # Start HDF5 Writer Thread #
         def hdf5_writer(data):
             return write_dict_to_hdf5(self._hdf5_file, data)
-
         run_threaded_command(self._write_from_queue, args=(hdf5_writer, self._queue_dict["hdf5"]))
 
     def write_timestep(self, timestep):
-        if self._save_images:
-            self._update_video_files(timestep)
         self._queue_dict["hdf5"].put(timestep)
+        if self.post_process:
+            if not timestep["observation"]["timestamp"]["skip_action"]:
+                timestep = self._timestep_processor.forward(timestep)
+                self._update_npz_data(timestep)
+                self._update_video_files(timestep)
 
     def _update_metadata(self, metadata):
         for key in metadata:
@@ -88,58 +102,44 @@ class TrajectoryWriter:
                 continue
             writer(data)
             queue.task_done()
-
+    
     def _update_video_files(self, timestep):
-        image_dict = timestep["observations"]["image"]
+        image_dict = self._timestep_processor.get_image_dict(timestep)
 
-        for video_id in image_dict:
-            # Get Frame #
-            img = image_dict[video_id]
-            del image_dict[video_id]
-
-            # Create Writer And Buffer #
-            if video_id not in self._video_buffers:
-                filename = self.create_video_file(video_id, ".mp4")
-                self._video_writers[video_id] = imageio.get_writer(filename, macro_block_size=1)
+        for video_id, (img, _) in image_dict.items():
+            if video_id not in self._video_writers:
+                filename = os.path.join(self._dirpath, "recordings", f"{video_id}.mp4")
+                self._video_writers[video_id] = imageio.get_writer(filename, fps=15, macro_block_size=1)
                 run_threaded_command(
                     self._write_from_queue, args=(self._video_writers[video_id].append_data, self._queue_dict[video_id])
                 )
+            if video_id not in self.t:
+                self.t[video_id] = 0
+                os.makedirs(os.path.join(self._dirpath, "recordings", "frames", video_id), exist_ok=True)
 
-            # Add Image To Queue #
             self._queue_dict[video_id].put(img)
+            Image.fromarray(img[:, :, :3]).save(os.path.join(self._dirpath, "recordings", "frames", video_id, f"{self.t[video_id]:03d}.jpg"))
+            self.t[video_id] += 1
 
-        del timestep["observations"]["image"]
-
-    def create_video_file(self, video_id, suffix):
-        temp_file = tempfile.NamedTemporaryFile(suffix=suffix)
-        self._video_files[video_id] = temp_file
-        return temp_file.name
+    
+    def _update_npz_data(self, timestep):
+        self._npz_data["states"].append(timestep["observation"]["state"])
+        self._npz_data["actions_pos"].append(timestep["action"]["cartesian_position"])
+        self._npz_data["actions_vel"].append(timestep["action"]["cartesian_velocity"])
 
     def close(self, metadata=None):
-        # Add Metadata #
         if metadata is not None:
             self._update_metadata(metadata)
 
         # Finish Remaining Jobs #
         [queue.join() for queue in self._queue_dict.values()]
 
-        # Close Video Writers #
-        for video_id in self._video_writers:
-            self._video_writers[video_id].close()
-
-        # Save Serialized Videos #
-        for video_id in self._video_files:
-            # Create Folder #
-            if "videos" not in self._hdf5_file["observations"]:
-                self._hdf5_file["observations"].create_group("videos")
-
-            # Get Serialized Video #
-            self._video_files[video_id].seek(0)
-            serialized_video = np.asarray(self._video_files[video_id].read())
-
-            # Save Data #
-            self._hdf5_file["observations"]["videos"].create_dataset(video_id, data=serialized_video)
-            self._video_files[video_id].close()
+        if self.post_process:
+            for video_id in self._video_writers:
+                self._video_writers[video_id].close()
+            self._video_writers.clear()
+            self._npz_data = {k: np.array(v) for k, v in self._npz_data.items()}
+            np.savez(os.path.join(self._dirpath, "trajectory.npz"), **self._npz_data)
 
         # Close File #
         self._hdf5_file.close()
@@ -206,7 +206,7 @@ class TrajectoryReader:
         self._hdf5_file = h5py.File(filepath, "r")
         is_video_folder = "observations/videos" in self._hdf5_file
         self._read_images = read_images and is_video_folder
-        self._length = get_hdf5_length(self._hdf5_file)
+        self._length = get_hdf5_length(self._hdf5_file, keys_to_ignore=["videos"])
         self._video_readers = {}
         self._index = 0
 
@@ -229,7 +229,7 @@ class TrajectoryReader:
         # Load High Dimensional Data #
         if self._read_images:
             camera_obs = self._uncompress_images()
-            timestep["observations"]["image"] = camera_obs
+            timestep["observation"]["image"] = camera_obs
 
         # Increment Read Index #
         self._index += 1
@@ -272,10 +272,10 @@ def collect_trajectory(
     metadata=None,
     wait_for_controller=False,
     obs_pointer=None,
-    save_images=False,
     recording_folderpath=False,
     randomize_reset=False,
     reset_robot=True,
+    post_process=False,
 ):
     """
     Collects a robot trajectory.
@@ -289,11 +289,11 @@ def collect_trajectory(
     assert (controller is not None) or (policy is not None)
     assert (controller is not None) or (horizon is not None)
     if wait_for_controller:
-        assert controller is not None
+        assert controller is not None, "Must have controller to wait for controller"
     if obs_pointer is not None:
         assert isinstance(obs_pointer, dict)
-    if save_images:
-        assert save_filepath is not None
+    if post_process:
+        assert save_filepath is not None, "Must save data to post process"
 
     # Reset States #
     if controller is not None:
@@ -302,7 +302,7 @@ def collect_trajectory(
 
     # Prepare Data Writers If Necesary #
     if save_filepath:
-        traj_writer = TrajectoryWriter(save_filepath, metadata=metadata, save_images=save_images)
+        traj_writer = TrajectoryWriter(save_filepath, metadata=metadata, post_process=post_process)
     if recording_folderpath:
         env.camera_reader.start_recording(recording_folderpath)
 
@@ -375,6 +375,15 @@ def collect_trajectory(
             if save_filepath:
                 traj_writer.close(metadata=controller_info)
             return controller_info
+
+
+# def safety_check(action_info, camera_position):
+#     import pdb;pdb.set_trace()
+#     joint_positions = np.vstack(action_info["joint_positions"])  # Stack into a single array
+#     distances = np.linalg.norm(joint_positions - camera_position, axis=1)  # Compute distances
+#     if not np.all(distances >= 0.1):
+#         print("WARNING: SAFETY CHECK FAILED")
+#         import pdb;pdb.set_trace() 
 
 def replay_trajectory(
     env, filepath=None, assert_replayable_keys=["cartesian_position", "gripper_position", "joint_positions"]
@@ -471,7 +480,7 @@ def load_trajectory(
                 timestep["observation"].update(camera_obs)
 
         # Filter Steps #
-        step_skipped = not timestep["observation"]["controller_info"].get("movement_enabled", True)
+        step_skipped = timestep["observation"]["timestamp"]["skip_action"]
         delete_skipped_step = step_skipped and remove_skipped_steps
 
         # Save Filtered Timesteps #
@@ -585,7 +594,7 @@ def visualize_trajectory(
                 timestep["observation"].update(camera_obs)
 
         # Filter Steps #
-        step_skipped = not timestep["observation"]["controller_info"].get("movement_enabled", True)
+        step_skipped = timestep["observation"]["timestamp"]["skip_action"]
         delete_skipped_step = step_skipped and remove_skipped_steps
         delete_step = delete_skipped_step or camera_failed
         if delete_step:

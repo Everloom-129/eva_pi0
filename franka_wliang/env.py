@@ -135,6 +135,9 @@ class FrankaEnv(gym.Env):
         self.action_space = action_space
         self.check_action_range = "velocity" in action_space
         self.DoF = 7 if ("cartesian" in action_space) else 8
+    
+    def reload_calibration(self):
+        self.calibration_dict = load_calibration_info()
 
     def close(self):
         self._robot.server.close()

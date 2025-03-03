@@ -89,3 +89,16 @@ def decompose_transformation_matrix(T):
     pos = T[:3, 3]
     rot = rmat_to_euler(T[:3, :3])
     return pos, rot
+
+def transform_world_to_camera(pos, rot, extrinsics):
+    T_world = compose_transformation_matrix(pos, rot)
+    T_camera = extrinsics @ T_world
+    return decompose_transformation_matrix(T_camera)
+
+
+### Camera ###
+
+def project_camera_to_image(pos, intrinsics):
+    pixel = intrinsics @ pos
+    pixel = pixel / pixel[2]
+    return pixel[:2]

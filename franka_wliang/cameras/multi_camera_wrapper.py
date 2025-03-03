@@ -107,7 +107,8 @@ class RecordedMultiCameraWrapper:
         # Open Camera Readers #
         svo_filepaths = glob.glob(recording_folderpath + "/*.svo2")
         mp4_filepaths = glob.glob(recording_folderpath + "/*.mp4")
-        all_filepaths = svo_filepaths + mp4_filepaths
+        # all_filepaths = svo_filepaths + mp4_filepaths
+        all_filepaths = svo_filepaths  # TODO Don't need to process mp4, not sure why this is here
 
         self.camera_dict = {}
         for f in all_filepaths:

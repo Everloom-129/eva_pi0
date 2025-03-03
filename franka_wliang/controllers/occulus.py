@@ -194,6 +194,10 @@ class Occulus:
                 return action
         return self._calculate_action(obs_dict["robot_state"], include_info=include_info)
     
+    def register_key(self, key):
+        if key == ord(" "):
+            self.reset_origin = True
+    
     def close(self):
         self.running = False
         self.oculus_reader.stop()

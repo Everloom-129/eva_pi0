@@ -11,7 +11,7 @@ from copy import deepcopy
 import shutil
 
 from franka_wliang.utils.parameters import hand_camera_id, ARUCO_DICT, CHARUCOBOARD_ROWCOUNT, CHARUCOBOARD_COLCOUNT, CHARUCOBOARD_CHECKER_SIZE, CHARUCOBOARD_MARKER_SIZE
-from franka_wliang.utils.geometry_utils import pose_diff, change_pose_frame
+from franka_wliang.utils.geometry_utils import pose_diff, change_pose_frame, euler_to_rmat, project_camera_to_image, transform_world_to_camera, compose_transformation_matrix
 
 # Create Board #
 CHARUCO_BOARD = aruco.CharucoBoard_create(
@@ -38,14 +38,13 @@ def load_calibration_info(keep_time=False):
     with open(calib_info_filepath, "r") as jsonFile:
         calibration_info = json.load(jsonFile)
     if not keep_time:
-        calibration_info = {key: data["pose"] for key, data in calibration_info.items()}
+        calibration_info = {key: data["extrinsics"] for key, data in calibration_info.items()}
     return calibration_info
 
 
-def update_calibration_info(cam_id, transformation):
+def update_calibration_info(cam_id, intrinsics, extrinsics):
     calibration_info = load_calibration_info(keep_time=True)
-    calibration_info[cam_id] = {"pose": list(transformation), "timestamp": time.time()}
-
+    calibration_info[cam_id] = {"intrinsics": list(intrinsics), "extrinsics": list(extrinsics), "timestamp": time.time()}
     with open(calib_info_filepath, "w") as jsonFile:
         json.dump(calibration_info, jsonFile)
 
@@ -666,6 +665,8 @@ def calibrate_camera(
         state, _ = env.get_state()
         cam_obs, _ = env.read_cameras()
 
+
+
         for full_cam_id in cam_obs["image"]:
             if camera_id not in full_cam_id:
                 continue
@@ -675,7 +676,8 @@ def calibrate_camera(
 
         # Get Action #
         action = controller.forward({"robot_state": state})
-        # action[-1] = 0  # Keep gripper open
+        # action[-1] = 0 # Keep gripper open
+        # print("action: ", action)
 
         # Regularize Control Frequency #
         comp_time = time.time() - start_time
@@ -761,7 +763,74 @@ def calibrate_camera(
         success = calibrator.is_calibration_accurate(full_cam_id)
         if not success:
             return False
-        transformation = calibrator.calibrate(full_cam_id)
-        update_calibration_info(full_cam_id, transformation)
+        extrinsics = calibrator.calibrate(full_cam_id).tolist()
+        intrinsics = intrinsics_dict[full_cam_id]["cameraMatrix"].tolist()
+        update_calibration_info(full_cam_id, intrinsics, extrinsics)
 
     return True
+
+
+def check_calibration(
+    env,
+    controller,
+    obs_pointer=None,
+    wait_for_controller=False,
+    reset_robot=True,
+):
+
+    def draw_gripper(img, pos, rot, gripper, intrinsics, color=(0, 255, 255, 255)):
+        gripper_open_width, gripper_close_width = 0.07, 0.02  # meters
+        gripper_width = gripper * gripper_close_width + (1 - gripper) * gripper_open_width
+        gripper_lines = np.array([
+            [[0.0, gripper_width, 0.05], [0.0, gripper_width, 0.18]],
+            [[0.0, -gripper_width, 0.05], [0.0, -gripper_width, 0.18]],
+            [[0.0, gripper_width, 0.05], [0.0, -gripper_width, 0.05]],
+            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.05]],
+        ])
+
+        for (gripper_point_1, gripper_point_2) in gripper_lines:
+            gripper_point_1 = pos + euler_to_rmat(rot) @ gripper_point_1
+            gripper_pixel_1 = project_camera_to_image(gripper_point_1, intrinsics)
+            gripper_point_2 = pos + euler_to_rmat(rot) @ gripper_point_2
+            gripper_pixel_2 = project_camera_to_image(gripper_point_2, intrinsics)
+            cv2.line(img, tuple(map(int, gripper_pixel_1)), tuple(map(int, gripper_pixel_2)), color, 4)
+        
+        gripper_point = np.array([0.0, 0.0, 0.18])
+        gripper_point = pos + euler_to_rmat(rot) @ gripper_point
+        gripper_pixel = project_camera_to_image(gripper_point, intrinsics)
+        cv2.circle(img, tuple(map(int, gripper_pixel)), 4, color, -1)
+
+        return img
+
+    if reset_robot:
+        env.reset()
+    controller.reset_state()
+
+    while True:
+        controller_info = controller.get_info()
+        start_time = time.time()
+
+        obs = env.get_observation()
+        state, _ = env.get_state()
+        cam_obs, _ = env.read_cameras()
+
+        pos, rot, gripper_pos = state["cartesian_position"][:3], state["cartesian_position"][3:], state["gripper_position"]
+        for full_cam_id in cam_obs["image"]:
+            extrinsics, intrinsics = obs["camera_extrinsics"][full_cam_id], obs["camera_intrinsics"][full_cam_id]
+            extrinsics = np.linalg.inv(compose_transformation_matrix(extrinsics[:3], extrinsics[3:6]))
+            cur_pos, cur_rot = transform_world_to_camera(pos, rot, extrinsics)
+            draw_gripper(cam_obs["image"][full_cam_id], cur_pos, cur_rot, gripper_pos, intrinsics)
+        if obs_pointer is not None:
+            obs_pointer.update(cam_obs)
+
+        action = controller.forward({"robot_state": state})
+        comp_time = time.time() - start_time
+        sleep_left = (1 / env.control_hz) - comp_time
+        if sleep_left > 0:
+            time.sleep(sleep_left)
+        skip_step = wait_for_controller and (not controller_info["movement_enabled"])
+        if not skip_step:
+            env.step(action)
+        
+        if controller_info["success"] or controller_info["failure"]:
+            break

@@ -10,13 +10,13 @@ import threading
 import numpy as np
 
 from franka_wliang.utils.trajectory_utils import collect_trajectory
-from franka_wliang.utils.calibration_utils import calibrate_camera, check_calibration_info, save_calibration_info
+from franka_wliang.utils.calibration_utils import calibrate_camera, check_calibration, check_calibration_info, save_calibration_info
 from franka_wliang.utils.misc_utils import data_dir, run_threaded_command
 from franka_wliang.utils.parameters import hand_camera_id, code_version, robot_serial_number, robot_type
 
 
 class Runner:
-    def __init__(self, env, controller, policy=None, save_data=True, save_traj_dir=None):
+    def __init__(self, env, controller, policy=None, save_data=True, post_process=False):
         self.env = env
         self.controller = controller
         self.policy = policy
@@ -38,16 +38,17 @@ class Runner:
         self.display_thread = None
 
         # Make Sure Log Directorys Exist #
-        if save_traj_dir is None:
-            save_traj_dir = data_dir
-        self.success_logdir = os.path.join(save_traj_dir, "success", datetime.now().strftime("%Y-%m-%d"))
-        self.failure_logdir = os.path.join(save_traj_dir, "failure", datetime.now().strftime("%Y-%m-%d"))
-        self.eval_logdir = os.path.join(save_traj_dir, "eval", datetime.now().strftime("%Y-%m-%d"))
+        self.success_logdir = os.path.join(data_dir, "success", datetime.now().strftime("%Y-%m-%d"))
+        self.failure_logdir = os.path.join(data_dir, "failure", datetime.now().strftime("%Y-%m-%d"))
+        self.eval_logdir = os.path.join(data_dir, "eval", datetime.now().strftime("%Y-%m-%d"))
         if not os.path.isdir(self.success_logdir):
             os.makedirs(self.success_logdir)
         if not os.path.isdir(self.failure_logdir):
             os.makedirs(self.failure_logdir)
         self.save_data = save_data
+        self.post_process = post_process
+
+        self.display_camera_feed()
 
     def reset_robot(self, randomize=False):
         self.env._robot.establish_connection()
@@ -106,6 +107,7 @@ class Runner:
             reset_robot=reset_robot,
             recording_folderpath=recording_dir,
             save_filepath=save_filepath,
+            post_process=self.post_process,
             wait_for_controller=True,
         )
         self.traj_running = False
@@ -117,10 +119,10 @@ class Runner:
                 shutil.move(save_dir, new_save_dir)
                 save_dir = new_save_dir
         
-        self.last_traj_name = traj_name
-        self.last_traj_path = save_dir
+            self.last_traj_name = traj_name
+            self.last_traj_path = save_dir
 
-    def play_trajectory(self, policy_wrapper, reset_robot=True):
+    def play_trajectory(self, policy_wrapper, reset_robot=True, wait_for_controller=True):
         '''
         Assume traj_path is a directory containing a trajectory.h5 file.
         '''
@@ -150,7 +152,8 @@ class Runner:
             reset_robot=reset_robot,
             recording_folderpath=recording_dir,
             save_filepath=save_filepath,
-            wait_for_controller=True,
+            post_process=self.post_process,
+            wait_for_controller=wait_for_controller,
         )
         self.traj_running = False
         self.obs_pointer = {}
@@ -163,7 +166,7 @@ class Runner:
         
         self.last_traj_name = traj_name
         self.last_traj_path = save_dir
-
+    
     def calibrate_camera(self, cam_id, reset_robot=True):
         self.traj_running = True
         self.env._robot.establish_connection()
@@ -174,6 +177,20 @@ class Runner:
             obs_pointer=self.obs_pointer,
             wait_for_controller=True,
             reset_robot=reset_robot,
+        )
+        self.traj_running = False
+        self.obs_pointer = {}
+        return success
+
+    def check_calibration(self, reset_robot=True):
+        self.traj_running = True
+        self.env._robot.establish_connection()
+        success = check_calibration(
+            self.env,
+            controller=self.controller,
+            obs_pointer=self.obs_pointer,
+            wait_for_controller=True,
+            reset_robot=reset_robot
         )
         self.traj_running = False
         self.obs_pointer = {}
@@ -239,36 +256,21 @@ class Runner:
                     continue
                 cols = [np.vstack(camera_feed[i:i+2]) for i in range(0, len(camera_feed), 2)]
                 grid = np.hstack(cols)
-                cv2.imshow("Camera Feed", cv2.cvtColor(cv2.resize(grid, (0, 0), fx=0.5, fy=0.5), cv2.COLOR_RGB2BGR))
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
+                cv2.imshow("franka_wliang", cv2.cvtColor(cv2.resize(grid, (0, 0), fx=0.5, fy=0.5), cv2.COLOR_RGB2BGR))
+
+                key = cv2.waitKey(1) & 0xFF
+                if key != 255:
+                    self.controller.register_key(key)
+
             cv2.destroyAllWindows()
         self.display_thread = run_threaded_command(display_thread)
-        
-    # def display_camera_feed(self, camera_id=None):
-    #     self.stop_camera_feed = threading.Event()
-    #     def display_thread():
-    #         while not self.stop_camera_feed.is_set():
-    #             try:
-    #                 camera_feed, cam_ids = self.get_camera_feed()
-    #             except:
-    #                 continue
-    #             cols = [np.vstack(camera_feed[i:i+2]) for i in range(0, len(camera_feed), 2)]
-    #             grid = np.hstack(cols)
-    #             cv2.imshow("Camera Feed", cv2.cvtColor(cv2.resize(grid, (0, 0), fx=0.5, fy=0.5), cv2.COLOR_RGB2BGR))
-    #             if cv2.waitKey(1) & 0xFF == ord("q"):
-    #                 break
-    #         cv2.destroyAllWindows()
-    #     self.display_thread = run_threaded_command(display_thread)
 
     def close_camera_feed(self):
-        print("Closing camera feed...")
         if self.stop_camera_feed is not None and self.display_thread is not None:
             self.stop_camera_feed.set()
             self.display_thread.join()
             self.stop_camera_feed = None
             self.display_thread = None
-            print("Camera feed closed.")
 
     def change_trajectory_status(self, success=False):
         if (self.last_traj_path is None) or (success == self.traj_saved):
@@ -293,6 +295,9 @@ class Runner:
     
     def set_action_space(self, action_space):
         self.env.set_action_space(action_space)
+    
+    def reload_calibration(self):
+        self.env.reload_calibration()
 
     def close(self):
         self.close_camera_feed()

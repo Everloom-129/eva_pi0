@@ -2,6 +2,7 @@ from collections import defaultdict
 from copy import deepcopy
 from itertools import chain
 import numpy as np
+from PIL import Image
 
 from franka_wliang.utils.parameters import camera_type_to_string_dict
 from franka_wliang.data_processing.image_transformer import ImageTransformer
@@ -56,7 +57,6 @@ class TimestepProcessor:
 
         for serial_number in sorted_camera_ids:
             cam_type = camera_type_dict[serial_number]
-            # import ipdb; ipdb.set_trace()
             if cam_type not in self.camera_extrinsics:
                 continue
 
@@ -120,17 +120,34 @@ class TimestepProcessor:
             processed_timestep["action"] = {}
             for action_space in ["cartesian_position", "joint_position", "cartesian_velocity", "joint_velocity"]:
                 arm_action = timestep["action"][action_space]
+                # this try except is due to a bug in robot.py in droid_pi0 on server where the line: action_dict["gripper_velocity"]= gripper_velocity was incorrectly written as : action_dict["gripper_delta"]  = gripper_velocity
                 try:
                     gripper_action = timestep["action"][("gripper_velocity" if "velocity" in action_space else "gripper_position")]
-                    action = np.concatenate([arm_action, [gripper_action]], dtype=self.action_dtype)
-                    processed_timestep["action"][action_space] = action
                 except KeyError:
-                    # if action mode is cartesian_position, there's no "gripper_velocity" in timestep["action"].
-                    # check create_action_dict function in R2D2_pal_internal on NUC for more detail.
-                    continue
+                    gripper_action = timestep["action"][("gripper_delta" if "velocity" in action_space else "gripper_position")]
+
+                action = np.concatenate([arm_action, [gripper_action]], dtype=self.action_dtype)
+                processed_timestep["action"][action_space] = action
 
         # return raw information + meta data
         processed_timestep["extrinsics_dict"] = extrinsics_dict
         processed_timestep["intrinsics_dict"] = intrinsics_dict
 
         return processed_timestep
+    
+    def get_image_dict(self, timestep):
+        return timestep["observation"]["camera"]["image"]
+
+    def get_image(self, timestep, camera_type):
+        im = timestep["observation"]["camera"]["image"][camera_type][0]
+        im = Image.fromarray(im[:, :, :3])
+        return im
+
+    def get_depth(self, timestep, camera_type):
+        raw_depth = timestep["observation"]["camera"]["depth"][camera_type][0]
+        depth_array = np.nan_to_num(raw_depth, nan=0)
+        return depth_array
+
+    def get_pcd(self, timestep, camera_type):
+        pcd = timestep["observation"]["camera"]["pointcloud"][camera_type][0]
+        return pcd
