@@ -2,8 +2,6 @@ import time
 import multiprocessing
 import subprocess
 import threading
-from pynput import keyboard
-from contextlib import contextmanager
 from pathlib import Path
 import os
 import glob
@@ -26,24 +24,6 @@ def run_multiprocessed_command(command, args=()):
     process = multiprocessing.Process(target=command, args=args)
     process.start()
     return process
-
-@contextmanager
-def keyboard_listener():
-    key = {"pressed": None, "released": None}
-    def on_press(pressed_key):
-        nonlocal key
-        key["pressed"] = pressed_key
-        key["released"] = None
-    def on_release(pressed_key):
-        nonlocal key
-        key["pressed"] = None
-        key["released"] = pressed_key
-    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-    listener.start()
-    try:
-        yield key
-    finally:
-        listener.stop()
 
 def get_latest_trajectory():
     data_dirs = glob.glob(str(data_dir) + "*/**/", recursive=True)

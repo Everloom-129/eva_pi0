@@ -1,27 +1,20 @@
 
 import argparse
-import cv2
-import numpy as np
-from tqdm import tqdm
-import threading
 
 from franka_wliang.controllers.replayer import Replayer
-from franka_wliang.env import FrankaEnv
 from franka_wliang.runner import Runner
-from franka_wliang.utils.misc_utils import run_threaded_command, keyboard_listener
 from franka_wliang.manager import load_runner
 
 
 def play_trajectory(runner: Runner, traj_path: str, action_space: str, autoplay=False, skip_reset=False):
     policy = Replayer(traj_path, action_space)
-    with keyboard_listener() as keyboard:
-        runner.play_trajectory(policy, wait_for_controller=not autoplay, reset_robot=not skip_reset)
-        if not autoplay:
-            print("Ready to reset, press any key or controller button...")
-            while True:
-                controller_info = runner.get_controller_info()
-                if controller_info["success"] or controller_info["failure"] or keyboard["pressed"] is not None:
-                    break
+    runner.play_trajectory(policy, wait_for_controller=not autoplay, reset_robot=not skip_reset)
+    if not autoplay:
+        runner.print("Ready to reset, press any controller button...")
+        while True:
+            controller_info = runner.get_controller_info()
+            if controller_info["success"] or controller_info["failure"]:
+                break
         runner.reset_robot()
 
 

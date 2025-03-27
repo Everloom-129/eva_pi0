@@ -28,9 +28,8 @@ class FrankaEnv(gym.Env):
         self.control_hz = 15
 
         if nuc_ip is None:
-            from franka.robot import FrankaRobot
-
-            self._robot = FrankaRobot()
+            from franka_wliang.robot.controller import FrankaController
+            self._robot = FrankaController()
         else:
             self._robot = ServerInterface(ip_address=nuc_ip)
 

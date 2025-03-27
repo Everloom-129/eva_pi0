@@ -298,6 +298,11 @@ class Runner:
     
     def reload_calibration(self):
         self.env.reload_calibration()
+    
+    def print(self, string):
+        # This is used by scripts to print to the runner console instead of the script console
+        # In general, we want to print everything to the runner console
+        print(string)
 
     def close(self):
         self.close_camera_feed()

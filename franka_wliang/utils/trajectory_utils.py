@@ -118,7 +118,7 @@ class TrajectoryWriter:
                 os.makedirs(os.path.join(self._dirpath, "recordings", "frames", video_id), exist_ok=True)
 
             self._queue_dict[video_id].put(img)
-            Image.fromarray(img[:, :, :3]).save(os.path.join(self._dirpath, "recordings", "frames", video_id, f"{self.t[video_id]:03d}.jpg"))
+            Image.fromarray(img[:, :, :3]).save(os.path.join(self._dirpath, "recordings", "frames", video_id, f"{self.t[video_id]:05d}.jpg"))
             self.t[video_id] += 1
 
     

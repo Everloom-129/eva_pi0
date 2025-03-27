@@ -105,22 +105,22 @@ def process_data(input_path, process_depth=False, process_pcd=False):
 
             for camera_type in camera_types:
                 im = timestep_processor.get_image(traj[t], camera_type)
-                im.save(frames_dir / camera_type / f"{t:03d}.jpg")
+                im.save(frames_dir / camera_type / f"{t:05d}.jpg")
 
             if process_depth:
                 depth = timestep_processor.get_depth(traj[t], camera_type)
-                np.save(depth_dir / camera_type / f"{t:03d}.npy", depth)
+                np.save(depth_dir / camera_type / f"{t:05d}.npy", depth)
             
             if process_pcd:
                 pcd = timestep_processor.get_pcd(traj[t], camera_type)
-                np.save(pcd_dir / camera_type / f"{t:03d}.npy", pcd)
+                np.save(pcd_dir / camera_type / f"{t:05d}.npy", pcd)
 
         trajectory = {"states": np.array(states), "actions_pos": np.array(actions_pos), "actions_vel": np.array(actions_vel)}
         np.savez(f"{traj_dir}/trajectory.npz", **trajectory)
 
         for camera_type in camera_types:
             subprocess.run([
-                "ffmpeg", "-y", "-framerate", "15", "-i", str(frames_dir / camera_type / f"%03d.jpg"),
+                "ffmpeg", "-y", "-framerate", "15", "-i", str(frames_dir / camera_type / f"%05d.jpg"),
                 "-c:v", "libx264", "-pix_fmt", "yuv420p", str(videos_dir / f"{camera_type}.mp4")
             ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
