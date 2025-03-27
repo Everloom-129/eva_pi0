@@ -3,6 +3,7 @@ import time
 import grpc
 import numpy as np
 import torch
+import zerorpc
 from polymetis import GripperInterface, RobotInterface
 
 from franka_wliang.utils.parameters import sudo_password
@@ -182,7 +183,7 @@ class FrankaController:
 
         if gripper_action_space is None:
             gripper_action_space = "velocity" if velocity else "position"
-        assert gripper_action_space in ["velocity", "policy"]
+        assert gripper_action_space in ["velocity", "position"]
             
 
         if gripper_action_space == "velocity":
@@ -228,3 +229,10 @@ class FrankaController:
                 action_dict["joint_velocity"] = joint_velocity.tolist()
 
         return action_dict
+
+
+if __name__ == "__main__":
+    robot_client = FrankaController()
+    s = zerorpc.Server(robot_client)
+    s.bind("tcp://0.0.0.0:4242")
+    s.run()

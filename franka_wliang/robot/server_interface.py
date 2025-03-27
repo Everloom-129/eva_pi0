@@ -32,6 +32,7 @@ class ServerInterface:
     def establish_connection(self):
         self.server = zerorpc.Client(heartbeat=20)
         self.server.connect("tcp://" + self.ip_address + ":4242")
+        print(f"Established connection to robot at {self.ip_address}:4242")
 
     def launch_controller(self):
         self.server.launch_controller()

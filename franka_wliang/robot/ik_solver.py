@@ -2,7 +2,7 @@ import numpy as np
 from dm_control import mjcf
 from dm_robotics.moma.effectors import arm_effector, cartesian_6d_velocity_effector
 
-from franka_wliang.robot.robot_model import RobotArm
+from franka_wliang.robot.robot_model import FrankaArm
 
 
 class RobotIKSolver:
@@ -14,7 +14,7 @@ class RobotIKSolver:
         self.max_rot_delta = 0.15
         self.control_hz = 15
 
-        self._arm = RobotArm()
+        self._arm = FrankaArm()
         self._physics = mjcf.Physics.from_mjcf_model(self._arm.mjcf_model)
         self._effector = arm_effector.ArmEffector(arm=self._arm, action_range_override=None, robot_name=self._arm.name)
 
