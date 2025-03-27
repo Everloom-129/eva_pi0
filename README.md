@@ -1,59 +1,57 @@
-# Will's Franka Infrastructure
+# Eva Franka Infrastructure
 
-This is a simple and extendable franka infrastructure codebase that aims to be as modular and straightforward as possible. The code is based off of R2D2 and DROID.
+Eva is a simple, modular, and extendable Franka infrastructure built on [DROID](https://github.com/droid-dataset/droid). Key features include:
+- Modular design with atomic components, making it configurable and extendable.
+- Lightweight and simple interface via the terminal and a camera feed window.
+- Clean and organized code, streamlining future development.
 
-NOTE: This repository has two dependencies listed below. If you are setting this up on the robot NUC, (1) is required. If you are setting this up on the control workstation, (2) is required:
-
-(1) https://github.com/facebookresearch/fairo
-
-(2) https://github.com/rail-berkeley/oculus_reader
-
-## Setup Guide
-Setup this repository on both the server and client machine (ie: NUC and workstation)
-
-Install the necesary packages:
-
-```bash
-pip install -e .
-
-# Done like this to avoid dependency issues
-pip install dm-robotics-moma==0.4.0 --no-deps
-pip install dm-robotics-transformations==0.4.0 --no-deps
-pip install dm-robotics-agentflow==0.4.0 --no-deps
-pip install dm-robotics-geometry==0.4.0 --no-deps
-pip install dm-robotics-manipulation==0.4.0 --no-deps
-pip install dm-robotics-controllers==0.4.0 --no-deps
-```
-
-If you are setting this up on the robot NUC:
-- In r2d2/misc/parameters.py, set "sudo_password" to your machine's corresponding sudo password. Sudo access is needed to launch the robot. The rest of the parameters can be ignored for now.
-
-If you are setting this up on the control workstation:
-- Go into r2d2/misc/parameters.py
-- Set robot_ip to match the IP address of your robot
-- Set nuc_ip to match the IP address of your NUC
-- Update the Charuco board parameters to match yours. If you ordered it through calib.io, the parameters should be on the board.
-- With the cameras plugged in, launch the GUI, and go to the calibration page. Clicking the camera ID’s will show you which view they correspond to. Update hand_camera_id, varied_3rd_person_camera_id, and fixed_3rd_person_camera_id values in parameters.py with the correct camera ID for each camera.
-
+## Installation
+The DROID software and hardware setup form the foundation for Eva. Please install them following the instructions [here](https://droid-dataset.github.io/droid/).
 
 ## Usage
 
-### Server Machine
-Activate the polymetis conda environment:
+Following the DROID setup, Eva runs on two machines:
+- NUC: Handles low-level control of the Franka Emika with a server built on [Polymetis](https://facebookresearch.github.io/fairo/polymetis/).
+- Laptop: Handles high-level logic (policy inference, teleoperation, etc) with a runner that executes user scripts.
 
+We recommend the following tmux setup:
+```
++-------------------------+-------------------------+
+|                         |                         |
+|      Server (NUC)       |     Runner (Laptop)     |
++-------------------------+                         |
+|    Scripts (Laptop)     |                         |
+|                         |                         |
++-------------------------+-------------------------+
+```
+
+### Startup
+
+1. On the NUC, run
 ```bash
-conda activate polymetis-local
+cd eva/eva/robot
+./launch_server.sh
+```
+2. On the laptop, run
+```bash
+conda activate droid_wliang  TODO CHANGE
+cd eva/scripts
+python start_runner.py
 ```
 
-Start the server:
+### Scripts
 
-```python
-python scripts/server/run_server.py
-```
+After the server and runner are started, you can execute scripts found in `eva/scripts/`. Some of the main functions include:
+- `collect_trajectory.py`: Collects teleoperated trajectories saved in `eva/data/`.
+- `play_trajectory.py`: Replays a selected trajectory.
+- `process_trajectory.py`: Processes the compressed trajectory data into a more usable format.
+- `calibrate_camera.py`: Calibrates a camera using the Charuco board.
+- `check_calibration.py`: Overlays a gripper annotation on the camera feed.
+- `take_pictures.py`: Saves camera pictures to `eva/data/images`.
+- `reset_robot.py`: Resets the robot pose to default.
 
-### Client Machine
-After activating your conda environment, try collecting a trajectory:
+### Development
 
-```python
-python scripts/tests/collect_trajectory.py
-```
+Code development should be entirely done on the laptop, and to sync the codebase with the NUC, run `./sync_infra.sh`. Remember to restart the server or runner if code changes affect them.
+
+If you are using Eva and plan to make significant changes, **please work in a copy of this directory** (eg, `eva_wliang`).
