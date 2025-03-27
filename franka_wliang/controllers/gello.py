@@ -173,7 +173,7 @@ class Gello:
             gripper_vel = gripper_vel * self.max_gripper_vel / gripper_vel_norm
         return lin_vel, rot_vel, gripper_vel
 
-    def _calculate_action(self, state_dict, include_info=False):
+    def _calculate_action(self, state_dict):
         # Read Sensor #
         if self.update_sensor:
             self._process_reading()
@@ -240,11 +240,7 @@ class Gello:
         # action = action.clip(-1, 1)
         action = np.concatenate([self.gello_state["joints"], [self.gello_state["gripper"]]])
 
-        # Return #
-        if include_info:
-            return action, info_dict
-        else:
-            return action
+        return action, info_dict
 
     def get_info(self):
         return {
@@ -254,14 +250,14 @@ class Gello:
             "controller_on": self._state["controller_on"],
         }
 
-    def forward(self, obs_dict, include_info=False):
+    def forward(self, obs_dict):
         # if self._state["poses"] == {}:
         #     action = np.zeros(7)
         #     if include_info:
         #         return action, {}
         #     else:
         #         return action
-        return self._calculate_action(obs_dict["robot_state"], include_info=include_info)
+        return self._calculate_action(obs_dict["robot_state"])
     
     def register_key(self, key):
         if key == ord(" "):
