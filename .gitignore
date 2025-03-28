@@ -10,3 +10,5 @@ eggs/
 *.egg-info/
 .vscode/
 
+*.npy
+*.npz
