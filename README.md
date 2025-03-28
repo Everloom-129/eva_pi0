@@ -34,7 +34,7 @@ cd eva/eva/robot
 ```
 2. On the laptop, run
 ```bash
-conda activate droid_wliang  TODO CHANGE
+conda activate eva
 cd eva/scripts
 python start_runner.py
 ```
