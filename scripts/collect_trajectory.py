@@ -8,7 +8,7 @@ from franka_wliang.manager import load_runner
 
 def collect_trajectory(runner: Runner, n_traj=1, practice=False):
     for _ in tqdm(range(n_traj), disable=(n_traj == 1)):
-        runner.collect_trajectory(practice=practice)
+        runner.run_trajectory(mode="collect")
 
         runner.print("Ready to reset, press any controller button...")
         while True:

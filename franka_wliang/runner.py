@@ -9,19 +9,22 @@ import shutil
 import threading
 import numpy as np
 
-from franka_wliang.utils.trajectory_utils import collect_trajectory
+from franka_wliang.controllers.occulus import Occulus
+from franka_wliang.controllers.keyboard import Keyboard
+from franka_wliang.controllers.gello import Gello
+from franka_wliang.controllers.policy import Policy
+from franka_wliang.controllers.replayer import Replayer
+from franka_wliang.utils.trajectory_utils import run_trajectory
 from franka_wliang.utils.calibration_utils import calibrate_camera, check_calibration, check_calibration_info, save_calibration_info
 from franka_wliang.utils.misc_utils import data_dir, run_threaded_command
 from franka_wliang.utils.parameters import hand_camera_id, code_version, robot_serial_number, robot_type
 
 
 class Runner:
-    def __init__(self, env, controller, policy=None, save_data=True, post_process=False):
+    def __init__(self, env, controller, save_data=True, post_process=False):
         self.env = env
-        self.controller = controller
-        self.policy = policy
+        self.controller = self.set_controller(controller)
 
-        self.last_traj_path = None
         self.traj_running = False
         self.obs_pointer = {}
 
@@ -73,81 +76,37 @@ class Runner:
     def set_trajectory_mode(self):
         self.env.camera_reader.set_trajectory_mode()
 
-    def collect_trajectory(self, info=None, practice=False, reset_robot=True):
-        traj_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    def run_trajectory(self, mode, reset_robot=True, wait_for_controller=True):
+        info = dict(
+            time=datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+            robot_serial_number=f"{robot_type}-{robot_serial_number}",
+            version_number=code_version
+        )
+        traj_name = info["time"]
 
-        info = {} if info is None else info
-        info["time"] = traj_name
-        info["robot_serial_number"] = f"{robot_type}-{robot_serial_number}"
-        info["version_number"] = code_version
-
-        if practice or not self.save_data:
-            save_filepath = None
-            recording_dir = None
-        else:
+        if mode == "collect":
+            # Assume failure first, move to success post-run
+            save_dir = os.path.join(self.failure_logdir, traj_name)
+        elif mode == "evaluate":
+            save_dir = os.path.join(self.eval_logdir, traj_name)
+        elif mode == "practice":
+            save_dir, recording_dir, save_filepath = None, None, None
+        
+        if save_dir is not None:
             if len(self.full_cam_ids) != 6:
                 raise ValueError("WARNING: User is trying to collect data without all three cameras running!")
-            
-            save_dir = os.path.join(self.failure_logdir, traj_name)  # Assume failure first, move to success post-run
             recording_dir = os.path.join(save_dir, "recordings")
             save_filepath = os.path.join(save_dir, "trajectory.h5")
             os.makedirs(save_dir, exist_ok=True)
             os.makedirs(recording_dir, exist_ok=True)
-            save_calibration_info(os.path.join(self.failure_logdir, info["time"], "calibration.json"))
-
-        # Collect Trajectory #
-        self.traj_running = True
-        self.env._robot.establish_connection()
-        controller_info = collect_trajectory(
-            self.env,
-            controller=self.controller,
-            metadata=info,
-            policy=self.policy,
-            obs_pointer=self.obs_pointer,
-            reset_robot=reset_robot,
-            recording_folderpath=recording_dir,
-            save_filepath=save_filepath,
-            post_process=self.post_process,
-            wait_for_controller=True,
-        )
-        self.traj_running = False
-        self.obs_pointer = {}
-
-        if save_filepath is not None:
-            if controller_info["success"]:
-                new_save_dir = os.path.join(self.success_logdir, traj_name)
-                shutil.move(save_dir, new_save_dir)
-                save_dir = new_save_dir
-        
-            self.last_traj_name = traj_name
-            self.last_traj_path = save_dir
-
-    def play_trajectory(self, policy_wrapper, reset_robot=True, wait_for_controller=True):
-        '''
-        Assume traj_path is a directory containing a trajectory.h5 file.
-        '''
-
-        traj_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        info = {}
-        info["time"] = traj_name
-        info["robot_serial_number"] = f"{robot_type}-{robot_serial_number}"
-        info["version_number"] = code_version
-
-        save_dir = os.path.join(self.eval_logdir, traj_name)  # Assume failure first, move to success post-run
-        recording_dir = os.path.join(save_dir, "recordings")
-        save_filepath = os.path.join(save_dir, "trajectory.h5")
-        os.makedirs(save_dir, exist_ok=True)
-        os.makedirs(recording_dir, exist_ok=True)
-        save_calibration_info(os.path.join(self.eval_logdir, info["time"], "calibration.json"))
+            save_calibration_info(os.path.join(self.eval_logdir, info["time"], "calibration.json"))
 
         self.traj_running = True
         self.env._robot.establish_connection()
-        controller_info = collect_trajectory(
+        controller_info = run_trajectory(
             self.env,
             controller=self.controller,
             metadata=info,
-            policy=policy_wrapper,
-            horizon=policy_wrapper.traj_len - 1,
             obs_pointer=self.obs_pointer,
             reset_robot=reset_robot,
             recording_folderpath=recording_dir,
@@ -158,14 +117,11 @@ class Runner:
         self.traj_running = False
         self.obs_pointer = {}
 
-        # if save_filepath is not None:
-        #     if controller_info["success"]:
-        #         new_save_dir = os.path.join(self.eval_logdir, traj_name)
-        #         shutil.move(save_dir, new_save_dir)
-        #         save_dir = new_save_dir
-        
-        self.last_traj_name = traj_name
-        self.last_traj_path = save_dir
+        if mode == "collect" and save_filepath is not None:
+            if controller_info["success"]:
+                new_save_dir = os.path.join(self.success_logdir, traj_name)
+                shutil.move(save_dir, new_save_dir)
+                save_dir = new_save_dir
     
     def calibrate_camera(self, cam_id, reset_robot=True):
         self.traj_running = True
@@ -256,7 +212,7 @@ class Runner:
                     continue
                 cols = [np.vstack(camera_feed[i:i+2]) for i in range(0, len(camera_feed), 2)]
                 grid = np.hstack(cols)
-                cv2.imshow("franka_wliang", cv2.cvtColor(cv2.resize(grid, (0, 0), fx=0.5, fy=0.5), cv2.COLOR_RGB2BGR))
+                cv2.imshow("eva", cv2.cvtColor(cv2.resize(grid, (0, 0), fx=0.5, fy=0.5), cv2.COLOR_RGB2BGR))
 
                 key = cv2.waitKey(1) & 0xFF
                 if key != 255:
@@ -271,30 +227,23 @@ class Runner:
             self.display_thread.join()
             self.stop_camera_feed = None
             self.display_thread = None
-
-    def change_trajectory_status(self, success=False):
-        if (self.last_traj_path is None) or (success == self.traj_saved):
-            return
-
-        save_filepath = os.path.join(self.last_traj_path, "trajectory.h5")
-        traj_file = h5py.File(save_filepath, "r+")
-        traj_file.attrs["success"] = success
-        traj_file.attrs["failure"] = not success
-        traj_file.close()
-
-        if success:
-            new_traj_path = os.path.join(self.success_logdir, self.last_traj_name)
-            os.rename(self.last_traj_path, new_traj_path)
-            self.last_traj_path = new_traj_path
-            self.traj_saved = True
-        else:
-            new_traj_path = os.path.join(self.failure_logdir, self.last_traj_name)
-            os.rename(self.last_traj_path, new_traj_path)
-            self.last_traj_path = new_traj_path
-            self.traj_saved = False
     
     def set_action_space(self, action_space):
         self.env.set_action_space(action_space)
+    
+    def set_controller(self, controller, **kwargs):
+        if controller == "occulus":
+            controller = Occulus()
+        elif controller == "keyboard":
+            controller = Keyboard()
+        elif controller == "gello":
+            controller = Gello()
+        elif controller == "policy":
+            controller = Policy(**kwargs)
+        elif controller == "replayer":
+            controller = Replayer(**kwargs)
+        else:
+            raise ValueError(f"Controller {controller} not recognized!")
     
     def reload_calibration(self):
         self.env.reload_calibration()

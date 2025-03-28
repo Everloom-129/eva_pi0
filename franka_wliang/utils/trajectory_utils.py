@@ -263,10 +263,9 @@ class TrajectoryReader:
 
 ##############################################################
 
-def collect_trajectory(
+def run_trajectory(
     env,
-    controller=None,
-    policy=None,
+    controller,
     horizon=None,
     save_filepath=None,
     metadata=None,
@@ -277,27 +276,10 @@ def collect_trajectory(
     reset_robot=True,
     post_process=False,
 ):
-    """
-    Collects a robot trajectory.
-    - If policy is None, actions will come from the controller
-    - If a horizon is given, we will step the environment accordingly
-    - Otherwise, we will end the trajectory when the controller tells us to
-    - If you need a pointer to the current observation, pass a dictionary in for obs_pointer
-    """
-
-    # Check Parameters #
-    assert (controller is not None) or (policy is not None)
-    assert (controller is not None) or (horizon is not None)
-    if wait_for_controller:
-        assert controller is not None, "Must have controller to wait for controller"
-    if obs_pointer is not None:
-        assert isinstance(obs_pointer, dict)
     if post_process:
         assert save_filepath is not None, "Must save data to post process"
 
-    # Reset States #
-    if controller is not None:
-        controller.reset_state()
+    controller.reset_state()
     env.camera_reader.set_trajectory_mode()
 
     # Prepare Data Writers If Necesary #
@@ -314,7 +296,7 @@ def collect_trajectory(
     # Begin! #
     while True:
         # Collect Miscellaneous Info #
-        controller_info = {} if (controller is None) else controller.get_info()
+        controller_info = controller.get_info()
         skip_action = wait_for_controller and (not controller_info["movement_enabled"])
         control_timestamps = {"step_start": time_ms()}
 
@@ -327,11 +309,7 @@ def collect_trajectory(
 
         # Get Action #
         control_timestamps["policy_start"] = time_ms()
-        if policy is None:
-            action, controller_action_info = controller.forward(obs, include_info=True)
-        else:
-            action = policy.forward(obs)
-            controller_action_info = {}
+        action, controller_action_info = controller.forward(obs)
 
         # Regularize Control Frequency #
         control_timestamps["sleep_start"] = time_ms()
@@ -339,12 +317,6 @@ def collect_trajectory(
         sleep_left = (1 / env.control_hz) - (comp_time / 1000)
         if sleep_left > 0:
             time.sleep(sleep_left)
-
-        # Moniter Control Frequency #
-        # moniter_control_frequency = True
-        # if moniter_control_frequency:
-        # 	print('Sleep Left: ', sleep_left)
-        # 	print('Feasible Hz: ', (1000 / comp_time))
 
         # Step Environment #
         control_timestamps["control_start"] = time_ms()
@@ -375,57 +347,6 @@ def collect_trajectory(
             if save_filepath:
                 traj_writer.close(metadata=controller_info)
             return controller_info
-
-
-# def safety_check(action_info, camera_position):
-#     import pdb;pdb.set_trace()
-#     joint_positions = np.vstack(action_info["joint_positions"])  # Stack into a single array
-#     distances = np.linalg.norm(joint_positions - camera_position, axis=1)  # Compute distances
-#     if not np.all(distances >= 0.1):
-#         print("WARNING: SAFETY CHECK FAILED")
-#         import pdb;pdb.set_trace() 
-
-def replay_trajectory(
-    env, filepath=None, assert_replayable_keys=["cartesian_position", "gripper_position", "joint_positions"]
-):
-    print("WARNING: STATE 'CLOSENESS' FOR REPLAYABILITY HAS NOT BEEN CALIBRATED")
-    gripper_key = "gripper_velocity" if "velocity" in env.action_space else "gripper_position"
-
-    # Prepare Trajectory Reader #
-    traj_reader = TrajectoryReader(filepath, read_images=False)
-    horizon = traj_reader.length()
-
-    for i in range(horizon):
-        # Get HDF5 Data #
-        timestep = traj_reader.read_timestep()
-
-        # Move To Initial Position #
-        if i == 0:
-            init_joint_position = timestep["observation"]["robot_state"]["joint_positions"]
-            init_gripper_position = timestep["observation"]["robot_state"]["gripper_position"]
-            action = np.concatenate([init_joint_position, [init_gripper_position]])
-            env.update_robot(action, action_space="joint_position", blocking=True)
-
-        # TODO: Assert Replayability #
-        # robot_state = env.get_state()[0]
-        # for key in assert_replayable_keys:
-        # 	desired = timestep['observation']['robot_state'][key]
-        # 	current = robot_state[key]
-        # 	assert np.allclose(desired, current)
-
-        # Regularize Control Frequency #
-        time.sleep(1 / env.control_hz)
-
-        # Get Action In Desired Action Space #
-        arm_action = timestep["action"][env.action_space]
-        gripper_action = timestep["action"][gripper_key]
-        action = np.concatenate([arm_action, [gripper_action]])
-        controller_info = timestep["observation"]["controller_info"]
-        movement_enabled = controller_info.get("movement_enabled", True)
-
-        # Follow Trajectory #
-        if movement_enabled:
-            env.step(action)
 
 
 def load_trajectory(

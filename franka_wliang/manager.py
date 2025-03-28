@@ -1,9 +1,6 @@
 from multiprocessing.managers import BaseManager
 from collections import defaultdict
 
-from franka_wliang.controllers.occulus import Occulus
-from franka_wliang.controllers.keyboard import Keyboard
-from franka_wliang.controllers.gello import Gello
 from franka_wliang.env import FrankaEnv
 from franka_wliang.runner import Runner
 from collections import defaultdict
@@ -18,12 +15,6 @@ def init(controller="occulus", control_mode="cartesian_velocity", record_depth=F
         lambda: {"depth": record_depth, "pointcloud": record_pcd}
     )
     env = FrankaEnv(control_mode, camera_kwargs=camera_kwargs)
-    if controller == "occulus":
-        controller = Occulus()
-    elif controller == "keyboard":
-        controller = Keyboard()
-    elif controller == "gello":
-        controller = Gello()
     runner = Runner(env=env, controller=controller, post_process=post_process)
     return runner
 
