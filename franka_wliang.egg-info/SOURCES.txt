@@ -1,9 +1,0 @@
-README.md
-setup.py
-franka_wliang/__init__.py
-franka_wliang/env.py
-franka_wliang/runner.py
-franka_wliang.egg-info/PKG-INFO
-franka_wliang.egg-info/SOURCES.txt
-franka_wliang.egg-info/dependency_links.txt
-franka_wliang.egg-info/top_level.txt
