@@ -5,7 +5,7 @@ from dm_control import mjcf
 from dm_robotics.moma.models import types
 from dm_robotics.moma.models.robots.robot_arms import robot_arm
 
-from franka_wliang.utils.parameters import robot_type
+from eva.utils.parameters import robot_type
 
 
 class RobotArm(robot_arm.RobotArm):

@@ -11,9 +11,9 @@ import subprocess
 from collections import defaultdict
 import time
 
-from franka_wliang.utils.trajectory_utils import load_trajectory
-from franka_wliang.utils.misc_utils import get_latest_trajectory
-from franka_wliang.data_processing.timestep_processor import TimestepProcessor
+from eva.utils.trajectory_utils import load_trajectory
+from eva.utils.misc_utils import get_latest_trajectory
+from eva.data_processing.timestep_processor import TimestepProcessor
 from PIL import Image
 from collections import defaultdict
 

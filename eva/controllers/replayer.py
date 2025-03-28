@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from franka_wliang.utils.trajectory_utils import TrajectoryReader
+from eva.utils.trajectory_utils import TrajectoryReader
 
 
 class Replayer:

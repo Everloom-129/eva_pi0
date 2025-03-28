@@ -9,15 +9,15 @@ import shutil
 import threading
 import numpy as np
 
-from franka_wliang.controllers.occulus import Occulus
-from franka_wliang.controllers.keyboard import Keyboard
-from franka_wliang.controllers.gello import Gello
-from franka_wliang.controllers.policy import Policy
-from franka_wliang.controllers.replayer import Replayer
-from franka_wliang.utils.trajectory_utils import run_trajectory
-from franka_wliang.utils.calibration_utils import calibrate_camera, check_calibration, check_calibration_info, save_calibration_info
-from franka_wliang.utils.misc_utils import data_dir, run_threaded_command
-from franka_wliang.utils.parameters import hand_camera_id, code_version, robot_serial_number, robot_type
+from eva.controllers.occulus import Occulus
+from eva.controllers.keyboard import Keyboard
+from eva.controllers.gello import Gello
+from eva.controllers.policy import Policy
+from eva.controllers.replayer import Replayer
+from eva.utils.trajectory_utils import run_trajectory
+from eva.utils.calibration_utils import calibrate_camera, check_calibration, check_calibration_info, save_calibration_info
+from eva.utils.misc_utils import data_dir, run_threaded_command
+from eva.utils.parameters import hand_camera_id, code_version, robot_serial_number, robot_type
 
 
 class Runner:

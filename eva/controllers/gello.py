@@ -3,7 +3,7 @@ import zmq
 import numpy as np
 from collections.abc import Callable
 
-from franka_wliang.utils.misc_utils import run_threaded_command
+from eva.utils.misc_utils import run_threaded_command
 
 
 class GELLODevice():

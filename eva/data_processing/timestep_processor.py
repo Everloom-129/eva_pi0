@@ -4,8 +4,8 @@ from itertools import chain
 import numpy as np
 from PIL import Image
 
-from franka_wliang.utils.parameters import camera_type_to_string_dict
-from franka_wliang.data_processing.image_transformer import ImageTransformer
+from eva.utils.parameters import camera_type_to_string_dict
+from eva.data_processing.image_transformer import ImageTransformer
 
 
 class TimestepProcessor:

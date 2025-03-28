@@ -3,7 +3,7 @@ import argparse
 import subprocess
 import os
 
-from franka_wliang.utils.misc_utils import get_latest_trajectory, get_latest_image
+from eva.utils.misc_utils import get_latest_trajectory, get_latest_image
 
 def send_data(source, destination):
     if not os.path.exists(source):

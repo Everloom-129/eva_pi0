@@ -6,10 +6,10 @@ import torch
 import zerorpc
 from polymetis import GripperInterface, RobotInterface
 
-from franka_wliang.utils.parameters import sudo_password
-from franka_wliang.utils.misc_utils import run_terminal_command, run_threaded_command
-from franka_wliang.utils.geometry_utils import add_poses, euler_to_quat, pose_diff, quat_to_euler
-from franka_wliang.robot.ik_solver import RobotIKSolver
+from eva.utils.parameters import sudo_password
+from eva.utils.misc_utils import run_terminal_command, run_threaded_command
+from eva.utils.geometry_utils import add_poses, euler_to_quat, pose_diff, quat_to_euler
+from eva.robot.ik_solver import RobotIKSolver
 
 
 class FrankaController:

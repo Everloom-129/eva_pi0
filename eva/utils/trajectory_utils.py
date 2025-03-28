@@ -10,11 +10,11 @@ from PIL import Image
 import h5py
 import imageio
 
-from franka_wliang.data_processing.image_transformer import ImageTransformer
-from franka_wliang.data_processing.timestep_processor import TimestepProcessor
-from franka_wliang.cameras.multi_camera_wrapper import RecordedMultiCameraWrapper
-from franka_wliang.utils.parameters import camera_type_to_string_dict
-from franka_wliang.utils.misc_utils import time_ms, run_threaded_command
+from eva.data_processing.image_transformer import ImageTransformer
+from eva.data_processing.timestep_processor import TimestepProcessor
+from eva.cameras.multi_camera_wrapper import RecordedMultiCameraWrapper
+from eva.utils.parameters import camera_type_to_string_dict
+from eva.utils.misc_utils import time_ms, run_threaded_command
 
 ##############################################################
 

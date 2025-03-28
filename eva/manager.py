@@ -1,8 +1,8 @@
 from multiprocessing.managers import BaseManager
 from collections import defaultdict
 
-from franka_wliang.env import FrankaEnv
-from franka_wliang.runner import Runner
+from eva.env import FrankaEnv
+from eva.runner import Runner
 from collections import defaultdict
 
 

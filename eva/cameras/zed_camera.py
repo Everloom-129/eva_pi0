@@ -3,8 +3,8 @@ from copy import deepcopy
 import cv2
 import numpy as np
 
-from franka_wliang.utils.parameters import hand_camera_id
-from franka_wliang.utils.misc_utils import time_ms
+from eva.utils.parameters import hand_camera_id
+from eva.utils.misc_utils import time_ms
 
 try:
     import pyzed.sl as sl

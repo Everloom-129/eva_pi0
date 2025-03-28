@@ -4,10 +4,10 @@ from collections import defaultdict
 import glob
 from pathlib import Path
 
-from franka_wliang.cameras.zed_camera import gather_zed_cameras
-from franka_wliang.utils.parameters import get_camera_type
-from franka_wliang.cameras.mp4_reader import MP4Reader
-from franka_wliang.cameras.svo_reader import SVOReader
+from eva.cameras.zed_camera import gather_zed_cameras
+from eva.utils.parameters import get_camera_type
+from eva.cameras.mp4_reader import MP4Reader
+from eva.cameras.svo_reader import SVOReader
 
 
 class MultiCameraWrapper:

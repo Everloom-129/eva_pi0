@@ -2,8 +2,8 @@
 import argparse
 from tqdm import tqdm
 
-from franka_wliang.runner import Runner
-from franka_wliang.manager import load_runner
+from eva.runner import Runner
+from eva.manager import load_runner
 
 
 def collect_trajectory(runner: Runner, n_traj=1, practice=False):

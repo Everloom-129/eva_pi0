@@ -3,12 +3,12 @@ import gym
 import numpy as np
 from copy import deepcopy
 
-from franka_wliang.cameras.multi_camera_wrapper import MultiCameraWrapper
-from franka_wliang.robot.server_interface import ServerInterface
-from franka_wliang.utils.calibration_utils import load_calibration_info
-from franka_wliang.utils.parameters import camera_type_dict, hand_camera_id, nuc_ip
-from franka_wliang.utils.geometry_utils import change_pose_frame
-from franka_wliang.utils.misc_utils import time_ms
+from eva.cameras.multi_camera_wrapper import MultiCameraWrapper
+from eva.robot.server_interface import ServerInterface
+from eva.utils.calibration_utils import load_calibration_info
+from eva.utils.parameters import camera_type_dict, hand_camera_id, nuc_ip
+from eva.utils.geometry_utils import change_pose_frame
+from eva.utils.misc_utils import time_ms
 
 class FrankaEnv(gym.Env):
     def __init__(self, action_space="cartesian_velocity", gripper_action_space="velocity", camera_kwargs={}, do_reset=True):
@@ -23,7 +23,7 @@ class FrankaEnv(gym.Env):
         self.control_hz = 15
 
         if nuc_ip is None:
-            from franka_wliang.robot.controller import FrankaController
+            from eva.robot.controller import FrankaController
             self._robot = FrankaController()
         else:
             self._robot = ServerInterface(ip_address=nuc_ip)

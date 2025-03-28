@@ -1,11 +1,11 @@
 import json
 import open3d as o3d
 from pathlib import Path
-from franka_wliang.cameras.zed_camera import gather_zed_cameras, ZedCamera
+from eva.cameras.zed_camera import gather_zed_cameras, ZedCamera
 
 def load_calibration():
     """Load camera calibration data from JSON file."""
-    calib_path = Path("franka_wliang/utils/calibration.json")
+    calib_path = Path("eva/utils/calibration.json")
     with open(calib_path, 'r') as f:
         return json.load(f)
 

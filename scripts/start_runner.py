@@ -1,8 +1,8 @@
 
 import argparse
 
-import franka_wliang
-from franka_wliang.manager import start_runner
+import eva
+from eva.manager import start_runner
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 
 import argparse
 
-from franka_wliang.runner import Runner
-from franka_wliang.manager import load_runner
+from eva.runner import Runner
+from eva.manager import load_runner
 
 
 def play_trajectory(runner: Runner, traj_path: str, action_space: str, autoplay=False, skip_reset=False):

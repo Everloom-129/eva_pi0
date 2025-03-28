@@ -5,7 +5,7 @@ import os
 import cv2
 from tqdm import tqdm
 
-from franka_wliang.cameras.svo_reader import SVOReader
+from eva.cameras.svo_reader import SVOReader
 import argparse
 from pathlib import Path
 import pdb

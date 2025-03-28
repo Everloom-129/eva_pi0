@@ -7,11 +7,11 @@ from pathlib import Path
 import os
 from datetime import datetime
 
-from franka_wliang.controllers.occulus import Occulus
-from franka_wliang.env import FrankaEnv
-from franka_wliang.runner import Runner
-from franka_wliang.utils.misc_utils import data_dir
-from franka_wliang.manager import load_runner
+from eva.controllers.occulus import Occulus
+from eva.env import FrankaEnv
+from eva.runner import Runner
+from eva.utils.misc_utils import data_dir
+from eva.manager import load_runner
 
 
 def take_pictures(runner: Runner):
