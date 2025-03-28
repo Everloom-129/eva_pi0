@@ -28,6 +28,8 @@ class Occulus:
         gripper_action_gain: float = 3,
         rmat_reorder: list = [-2, -1, -3, 4],
     ):
+        self.action_space = "cartesian_velocity"
+        self.gripper_action_space = "velocity"
         self.oculus_reader = OculusReader()
         self.vr_to_global_mat = np.eye(4)
         self.max_lin_vel = max_lin_vel
@@ -122,7 +124,7 @@ class Occulus:
             gripper_vel = gripper_vel * self.max_gripper_vel / gripper_vel_norm
         return lin_vel, rot_vel, gripper_vel
 
-    def _calculate_action(self, state_dict, include_info=False):
+    def _calculate_action(self, state_dict):
         # Read Sensor #
         if self.update_sensor:
             self._process_reading()
@@ -171,11 +173,7 @@ class Occulus:
         action = np.concatenate([lin_vel, rot_vel, [gripper_vel]])
         action = action.clip(-1, 1)
 
-        # Return #
-        if include_info:
-            return action, info_dict
-        else:
-            return action
+        return action, info_dict
 
     def get_info(self):
         return {
@@ -185,14 +183,11 @@ class Occulus:
             "controller_on": self._state["controller_on"],
         }
 
-    def forward(self, obs_dict, include_info=False):
+    def forward(self, obs_dict):
         if self._state["poses"] == {}:
             action = np.zeros(7)
-            if include_info:
-                return action, {}
-            else:
-                return action
-        return self._calculate_action(obs_dict["robot_state"], include_info=include_info)
+            return action, {}
+        return self._calculate_action(obs_dict["robot_state"])
     
     def register_key(self, key):
         if key == ord(" "):

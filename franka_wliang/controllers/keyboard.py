@@ -15,6 +15,8 @@ class Keyboard:
         rot_action_gain: float = 2,
         gripper_action_gain: float = 3,
     ):
+        self.action_space = "cartesian_velocity"
+        self.gripper_action_space = "velocity"
         self.max_lin_vel = max_lin_vel
         self.max_rot_vel = max_rot_vel
         self.max_gripper_vel = max_gripper_vel
@@ -146,10 +148,10 @@ class Keyboard:
         self.keyboard_state["quat"] = euler_to_quat(add_angles(quat_to_euler(self.keyboard_state["quat"]), np.array([droll, dpitch, dyaw])))
         self.pressed_keys.clear()
 
-    def forward(self, obs_dict, include_info=False):
+    def forward(self, obs_dict):
         if self.keyboard_state:
             self._process_keys()
-        return self._calculate_action(obs_dict["robot_state"], include_info=include_info)
+        return self._calculate_action(obs_dict["robot_state"])
     
     def _limit_velocity(self, lin_vel, rot_vel, gripper_vel):
         """Scales down the linear and angular magnitudes of the action"""
@@ -164,7 +166,7 @@ class Keyboard:
             gripper_vel = gripper_vel * self.max_gripper_vel / gripper_vel_norm
         return lin_vel, rot_vel, gripper_vel
 
-    def _calculate_action(self, state_dict, include_info=False):
+    def _calculate_action(self, state_dict):
         # Read Observation
         robot_pos = np.array(state_dict["cartesian_position"][:3])
         robot_euler = state_dict["cartesian_position"][3:]
@@ -209,11 +211,7 @@ class Keyboard:
         action = np.concatenate([lin_vel, rot_vel, [gripper_vel]])
         action = action.clip(-1, 1)
 
-        # Return #
-        if include_info:
-            return action, info_dict
-        else:
-            return action
+        return action, info_dict
     
     def close(self):
         self.running = False

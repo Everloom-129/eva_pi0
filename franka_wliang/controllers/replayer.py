@@ -1,14 +1,13 @@
 
 import numpy as np
 
+from franka_wliang.utils.trajectory_utils import TrajectoryReader
+
 
 class Replayer:
-    def __init__(self, traj_path, action_space="cartesian_velocity"):  
+    def __init__(self, traj_path, action_space="cartesian_velocity", gripper_action_space="velocity"):
         self.action_space = action_space
-        self.phase = 0
-        self.max_phase = 4
-        self.threshold = 0.45
-        self.name = "trajectory_replay"
+        self.gripper_action_space = gripper_action_space
 
         if traj_path.endswith(".npz"):
             if action_space == "cartesian_velocity":
@@ -17,8 +16,18 @@ class Replayer:
                 self.traj = np.load(traj_path)["actions_pos"]
         elif traj_path.endswith(".npy"):
             self.traj = np.load(traj_path)
+        elif traj_path.endswith(".h5"):
+            traj_reader = TrajectoryReader(traj_path, read_images=False)
+            self.traj = []
+            for i in range(traj_reader.length()):
+                timestep = traj_reader.read_timestep()
+                arm_action = timestep["action"][self.action_space]
+                gripper_action = timestep["action"][self.gripper_action_space]
+                if not timestep["observation"]["timestamp"]["skip_action"]:
+                    self.traj.append(np.concatenate([arm_action, [gripper_action]]))
+            self.traj = np.array(self.traj)
         else:
-            raise NotImplementedError("ERROR: Trajectory must be in npz or npy format!")
+            raise ValueError(f"Invalid trajectory format: {traj_path}")
         
         self.traj_len = self.traj.shape[0]
         self.delay = 0

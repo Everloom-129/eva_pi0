@@ -244,6 +244,9 @@ class Runner:
             controller = Replayer(**kwargs)
         else:
             raise ValueError(f"Controller {controller} not recognized!")
+
+        self.env.set_action_space(controller.action_space)
+        self.env.set_gripper_action_space(controller.gripper_action_space)
     
     def reload_calibration(self):
         self.env.reload_calibration()

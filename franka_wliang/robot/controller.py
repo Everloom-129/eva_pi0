@@ -39,7 +39,7 @@ class FrankaController:
         self._robot_process.kill()
         self._gripper_process.kill()
 
-    def update_command(self, command, action_space="cartesian_velocity", gripper_action_space=None, blocking=False):
+    def update_command(self, command, action_space="cartesian_velocity", gripper_action_space="velocity", blocking=False):
         action_dict = self.create_action_dict(command, action_space=action_space, gripper_action_space=gripper_action_space)
 
         self.update_joints(action_dict["joint_position"], velocity=False, blocking=blocking)
@@ -174,17 +174,12 @@ class FrankaController:
         clamped_time_to_go = min(t_max, max(time_to_go, t_min))
         return clamped_time_to_go
 
-    def create_action_dict(self, action, action_space, gripper_action_space=None, robot_state=None):
+    def create_action_dict(self, action, action_space, gripper_action_space="velocity", robot_state=None):
         assert action_space in ["cartesian_position", "joint_position", "cartesian_velocity", "joint_velocity"]
+        assert gripper_action_space in ["velocity", "position"]
         if robot_state is None:
             robot_state = self.get_robot_state()[0]
         action_dict = {"robot_state": robot_state}
-        velocity = "velocity" in action_space
-
-        if gripper_action_space is None:
-            gripper_action_space = "velocity" if velocity else "position"
-        assert gripper_action_space in ["velocity", "position"]
-            
 
         if gripper_action_space == "velocity":
             action_dict["gripper_velocity"] = action[-1]
@@ -198,7 +193,7 @@ class FrankaController:
             action_dict["gripper_delta"] = gripper_velocity
 
         if "cartesian" in action_space:
-            if velocity:
+            if action_space == "cartesian_velocity":
                 action_dict["cartesian_velocity"] = action[:-1]
                 cartesian_delta = self._ik_solver.cartesian_velocity_to_delta(action[:-1])
                 action_dict["cartesian_position"] = add_poses(
@@ -218,7 +213,7 @@ class FrankaController:
 
         if "joint" in action_space:
             # NOTE: Joint to Cartesian has undefined dynamics due to IK
-            if velocity:
+            if action_space == "joint_velocity":
                 action_dict["joint_velocity"] = action[:-1]
                 joint_delta = self._ik_solver.joint_velocity_to_delta(action[:-1])
                 action_dict["joint_position"] = (joint_delta + np.array(robot_state["joint_positions"])).tolist()
