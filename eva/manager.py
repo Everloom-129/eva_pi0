@@ -10,17 +10,17 @@ class RunnerManager(BaseManager):
     pass
 
 
-def init(controller="occulus", control_mode="cartesian_velocity", record_depth=False, record_pcd=False, post_process=False):
+def init(controller, record_depth, record_pcd, post_process):
     camera_kwargs = defaultdict(
         lambda: {"depth": record_depth, "pointcloud": record_pcd}
     )
-    env = FrankaEnv(control_mode, camera_kwargs=camera_kwargs)
+    env = FrankaEnv(camera_kwargs=camera_kwargs)
     runner = Runner(env=env, controller=controller, post_process=post_process)
     return runner
 
 
-def start_runner(controller="occulus", control_mode="cartesian_velocity", record_depth=False, record_pcd=False, post_process=False):
-    runner = init(controller, control_mode, record_depth, record_pcd, post_process)
+def start_runner(controller="occulus", record_depth=False, record_pcd=False, post_process=False):
+    runner = init(controller, record_depth, record_pcd, post_process)
     RunnerManager.register("Runner", lambda: runner)
     manager = RunnerManager(address=("localhost", 50000), authkey=b"franka_runner")
     server = manager.get_server()

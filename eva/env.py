@@ -39,7 +39,7 @@ class FrankaEnv(gym.Env):
 
     def step(self, action):
         # Check Action
-        assert len(action) == self.DoF
+        assert len(action) == self.DoF, f"Provided action dimension ({len(action)}) does not match expected ({self.DoF}) for action space {self.action_space}!"
         if self.check_action_range:
             assert (action.max() <= 1) and (action.min() >= -1)
 

@@ -5,7 +5,7 @@ from eva.utils.trajectory_utils import TrajectoryReader
 
 
 class Replayer:
-    def __init__(self, traj_path, action_space="cartesian_velocity", gripper_action_space="velocity"):
+    def __init__(self, traj_path, action_space="cartesian_position", gripper_action_space="position"):
         self.action_space = action_space
         self.gripper_action_space = gripper_action_space
 
@@ -32,8 +32,23 @@ class Replayer:
         self.traj_len = self.traj.shape[0]
         self.delay = 0
         self.t = 0
+        self._state = {
+            "success": False,
+            "failure": False,
+            "movement_enabled": False,
+            "controller_on": True,
+        }
+    
+    def register_key(self, key):
+        if key == ord(" "):
+            self._state["movement_enabled"] = not self._state["movement_enabled"]
+            print("Movement enabled:", self._state["movement_enabled"])
+    
+    def get_info(self):
+        return self._state
 
-    def forward(self, observation, info=None):
+    def forward(self, observation):
+        print("Movement enabled:", self._state["movement_enabled"])
         cur_ee_pos = np.zeros((7,))
         cur_ee_pos[:6] = observation["robot_state"]["cartesian_position"]
         if self.delay > 0:
@@ -44,5 +59,11 @@ class Replayer:
             self.delay -= 1
         else:
             action = self.traj[self.t]
-            self.t = min(self.t + 1, self.traj_len - 1)
-        return action
+            self.t = self.t + 1
+            if self.t >= self.traj_len:
+                self._state["success"] = True
+        return action, {}
+
+    def reset_state(self):
+        self.t = 0
+        self.delay = 0

@@ -6,7 +6,9 @@ from eva.runner import Runner
 from eva.manager import load_runner
 
 
-def collect_trajectory(runner: Runner, n_traj=1, practice=False):
+def collect_trajectory(runner: Runner, controller=None, n_traj=1, practice=False):
+    if controller is not None:
+        runner.set_controller(controller)
     for _ in tqdm(range(n_traj), disable=(n_traj == 1)):
         runner.run_trajectory(mode="collect")
 
@@ -21,10 +23,9 @@ def collect_trajectory(runner: Runner, n_traj=1, practice=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--n_traj", type=int, default=1)
+    parser.add_argument("--controller", default=None, choices=["occulus", "keyboard", "gello"])
     parser.add_argument("--practice", action="store_true")
-    parser.add_argument("--action_space", default="cartesian_velocity")
     args = parser.parse_args()
 
     runner = load_runner()
-    runner.set_action_space(args.action_space)
-    collect_trajectory(runner, n_traj=args.n_traj, practice=args.practice)
+    collect_trajectory(runner, controller=args.controller, n_traj=args.n_traj, practice=args.practice)

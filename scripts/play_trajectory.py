@@ -15,12 +15,13 @@ def play_trajectory(runner: Runner, traj_path: str, action_space: str, autoplay=
             if controller_info["success"] or controller_info["failure"]:
                 break
         runner.reset_robot()
+    runner.set_prev_controller()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--traj_path", default="/home/franka/eva/trajectory_final.npy", type=str)
-    parser.add_argument("--action_space", default="cartesian_velocity")
+    parser.add_argument("--action_space", default="cartesian_position")
     parser.add_argument("--autoplay", action="store_true")
     parser.add_argument("--skip_reset", action="store_true")
     args = parser.parse_args()

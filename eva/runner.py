@@ -23,7 +23,8 @@ from eva.utils.parameters import hand_camera_id, code_version, robot_serial_numb
 class Runner:
     def __init__(self, env, controller, save_data=True, post_process=False):
         self.env = env
-        self.controller = self.set_controller(controller)
+        self.controller = None
+        self.set_controller(controller)
 
         self.traj_running = False
         self.obs_pointer = {}
@@ -53,10 +54,10 @@ class Runner:
 
         self.display_camera_feed()
 
-    def reset_robot(self, randomize=False):
+    def reset_robot(self):
         self.env._robot.establish_connection()
         self.controller.reset_state()
-        self.env.reset(randomize=randomize)
+        self.env.reset()
 
     def get_controller_info(self):
         info = self.controller.get_info()
@@ -99,7 +100,7 @@ class Runner:
             save_filepath = os.path.join(save_dir, "trajectory.h5")
             os.makedirs(save_dir, exist_ok=True)
             os.makedirs(recording_dir, exist_ok=True)
-            save_calibration_info(os.path.join(self.eval_logdir, info["time"], "calibration.json"))
+            save_calibration_info(os.path.join(save_dir, "calibration.json"))
 
         self.traj_running = True
         self.env._robot.establish_connection()
@@ -215,7 +216,7 @@ class Runner:
                 cv2.imshow("eva", cv2.cvtColor(cv2.resize(grid, (0, 0), fx=0.5, fy=0.5), cv2.COLOR_RGB2BGR))
 
                 key = cv2.waitKey(1) & 0xFF
-                if key != 255:
+                if self.controller is not None and key != 255:
                     self.controller.register_key(key)
 
             cv2.destroyAllWindows()
@@ -232,21 +233,26 @@ class Runner:
         self.env.set_action_space(action_space)
     
     def set_controller(self, controller, **kwargs):
+        self.prev_controller = self.controller
         if controller == "occulus":
-            controller = Occulus()
+            self.controller = Occulus()
         elif controller == "keyboard":
-            controller = Keyboard()
+            self.controller = Keyboard()
         elif controller == "gello":
-            controller = Gello()
+            self.controller = Gello()
         elif controller == "policy":
-            controller = Policy(**kwargs)
+            self.controller = Policy(**kwargs)
         elif controller == "replayer":
-            controller = Replayer(**kwargs)
+            self.controller = Replayer(**kwargs)
         else:
             raise ValueError(f"Controller {controller} not recognized!")
-
-        self.env.set_action_space(controller.action_space)
-        self.env.set_gripper_action_space(controller.gripper_action_space)
+        self.env.set_action_space(self.controller.action_space)
+        self.env.set_gripper_action_space(self.controller.gripper_action_space)
+    
+    def set_prev_controller(self):
+        self.controller = self.prev_controller
+        self.env.set_action_space(self.controller.action_space)
+        self.env.set_gripper_action_space(self.controller.gripper_action_space)
     
     def reload_calibration(self):
         self.env.reload_calibration()

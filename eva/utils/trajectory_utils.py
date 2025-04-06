@@ -291,7 +291,7 @@ def run_trajectory(
     # Prepare For Trajectory #
     num_steps = 0
     if reset_robot:
-        env.reset(randomize=randomize_reset)
+        env.reset()
 
     # Begin! #
     while True:

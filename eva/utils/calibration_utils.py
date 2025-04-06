@@ -71,7 +71,7 @@ def save_calibration_info(save_path):
 
 def visualize_calibration(calibration_dict):
     shapes = [".", "o", "v", "^", "s", "x", "D", "h", "<", ">", "8", "1", "2", "3"]
-    assert len(calibration_dict) < (len(shapes) - 1)
+    assert len(calibration_dict) < (len(shapes) - 1), "Error in visualize_calibration!"
     plt.clf()
 
     axes = plt.subplot(111, projection="3d")
@@ -174,7 +174,7 @@ class CharucoDetector:
         init_successes = []
         for i in range(len(readings)):
             corners, charuco_corners, charuco_ids, img_size = readings[i]
-            assert img_size == fixed_image_size
+            assert img_size == fixed_image_size, "Error in calculate_target_to_cam!"
             init_corners_all.append(charuco_corners)
             init_ids_all.append(charuco_ids)
             init_successes.append(i)
@@ -242,7 +242,7 @@ class CharucoDetector:
     def augment_image(self, cam_id, image, visualize=False, visual_type=["markers", "axes"]):
         if type(visual_type) != list:
             visual_type = [visual_type]
-        assert all([t in ["markers", "charuco", "axes"] for t in visual_type])
+        assert all([t in ["markers", "charuco", "axes"] for t in visual_type]), "Error in augment_image!"
         if image.shape[2] == 4:
             image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
         self._curr_cam_id = cam_id
@@ -636,12 +636,12 @@ def calibrate_camera(
     Hand Calibration Instructions: Press A when the hand camera is aligned with the board from 1 foot away."""
 
     if obs_pointer is not None:
-        assert isinstance(obs_pointer, dict)
+        assert isinstance(obs_pointer, dict), "Error in calibrate_camera, obs_pointer is not dict!"
 
     # Get Camera + Set Calibration Mode #
     camera = env.camera_reader.get_camera(camera_id)
     env.camera_reader.set_calibration_mode(camera_id)
-    assert pause_time > (camera.latency / 1000)
+    assert pause_time > (camera.latency / 1000), "Error in calibrate_camera, pause_time too short!"
 
     # Select Proper Calibration Procedure #
     hand_camera = camera.serial_number == hand_camera_id
@@ -675,9 +675,8 @@ def calibrate_camera(
             obs_pointer.update(cam_obs)
 
         # Get Action #
-        action = controller.forward({"robot_state": state})
+        action, _ = controller.forward({"robot_state": state})
         # action[-1] = 0 # Keep gripper open
-        # print("action: ", action)
 
         # Regularize Control Frequency #
         comp_time = time.time() - start_time
@@ -823,7 +822,7 @@ def check_calibration(
         if obs_pointer is not None:
             obs_pointer.update(cam_obs)
 
-        action = controller.forward({"robot_state": state})
+        action, _ = controller.forward({"robot_state": state})
         comp_time = time.time() - start_time
         sleep_left = (1 / env.control_hz) - comp_time
         if sleep_left > 0:
