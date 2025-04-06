@@ -56,6 +56,9 @@ class Gello:
         print("Since the GELLO motors are not strong enough to hold itself up, it cannot easily match the Franka. During init, the Franka will jerk toward the GELLO's joint positions.")
         print("This should be replaced by FACTR once it's released.")
 
+    def get_name(self):
+        return "gello"
+
     def reset_state(self):
         self._state = {
             "poses": {},

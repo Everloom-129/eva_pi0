@@ -10,6 +10,7 @@ import threading
 import numpy as np
 
 from eva.controllers.occulus import Occulus
+from eva.controllers.spacemouse import SpaceMouse
 from eva.controllers.keyboard import Keyboard
 from eva.controllers.gello import Gello
 from eva.controllers.policy import Policy
@@ -81,7 +82,8 @@ class Runner:
         info = dict(
             time=datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
             robot_serial_number=f"{robot_type}-{robot_serial_number}",
-            version_number=code_version
+            version_number=code_version,
+            controller=self.controller.get_name(),
         )
         traj_name = info["time"]
 
@@ -240,6 +242,8 @@ class Runner:
             self.controller = Keyboard()
         elif controller == "gello":
             self.controller = Gello()
+        elif controller == "spacemouse": 
+            self.controller = SpaceMouse()
         elif controller == "policy":
             self.controller = Policy(**kwargs)
         elif controller == "replayer":

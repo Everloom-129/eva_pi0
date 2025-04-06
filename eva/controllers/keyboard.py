@@ -57,12 +57,21 @@ class Keyboard:
         )
         print("Press space to unlock control...")
 
+    def get_name(self):
+        return "keyboard"
+
     def reset_state(self):
         self.pressed_keys.clear()
         self.reset_origin = True
         self.robot_origin = None
         self.keyboard_origin = None
         self.keyboard_state = None
+        self._state = {
+            "success": False,
+            "failure": False,
+            "movement_enabled": False,
+            "controller_on": True,
+        }
     
     def register_key(self, key):
         if key == ord(" "):
@@ -77,9 +86,7 @@ class Keyboard:
             self.pressed_keys.add(chr(key))
     
     def get_info(self):
-        ret = self._state.copy()
-        self._state["success"] = self._state["failure"] = False
-        return ret
+        return self._state.copy()
     
     def _process_keys(self):
         dx, dy, dz = 0, 0, 0

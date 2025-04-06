@@ -47,6 +47,9 @@ class Replayer:
     def get_info(self):
         return self._state
 
+    def get_name(self):
+        return "replayer"
+        
     def forward(self, observation):
         print("Movement enabled:", self._state["movement_enabled"])
         cur_ee_pos = np.zeros((7,))

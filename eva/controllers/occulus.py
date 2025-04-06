@@ -48,6 +48,9 @@ class Occulus:
         self.running = True
         run_threaded_command(self._update_internal_state)
 
+    def get_name(self):
+        return "occulus"
+
     def reset_state(self):
         self._state = {
             "poses": {},
