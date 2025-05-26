@@ -3,11 +3,10 @@ import time
 from copy import deepcopy
 from datetime import datetime
 import cv2
-import h5py
-from pathlib import Path
 import shutil
 import threading
 import numpy as np
+import json
 
 from eva.controllers.occulus import Occulus
 from eva.controllers.spacemouse import SpaceMouse
@@ -15,34 +14,18 @@ from eva.controllers.keyboard import Keyboard
 from eva.controllers.gello import Gello
 from eva.controllers.policy import Policy
 from eva.controllers.replayer import Replayer
+
 from eva.utils.trajectory_utils import run_trajectory
 from eva.utils.calibration_utils import calibrate_camera, check_calibration, check_calibration_info, save_calibration_info
-from eva.utils.misc_utils import data_dir, run_threaded_command
+from eva.utils.misc_utils import data_dir, run_threaded_command, get_latest_trajectory, get_latest_image
 from eva.utils.parameters import hand_camera_id, code_version, robot_serial_number, robot_type
 
 
 class Runner:
-    def __init__(self, env, controller, save_data=True, post_process=False):
+    def __init__(self, env, controller="occulus", controller_kwargs={}, disable_saving=False, disable_post_process=False, record_depth=False, record_pcd=False, **kwargs):
         self.env = env
-        self.controller = None
-        self.set_controller(controller)
+        self.initialize(controller, controller_kwargs, disable_saving, disable_post_process, record_depth, record_pcd)
 
-        self.traj_running = False
-        self.obs_pointer = {}
-
-        # Get Camera Info #
-        self.cam_ids = list(env.camera_reader.camera_dict.keys())
-        self.cam_ids.sort()
-
-        _, full_cam_ids = self.get_camera_feed()
-        self.num_cameras = len(full_cam_ids)
-        self.full_cam_ids = full_cam_ids
-        self.advanced_calibration = False
-
-        self.stop_camera_feed = None
-        self.display_thread = None
-
-        # Make Sure Log Directorys Exist #
         self.success_logdir = os.path.join(data_dir, "success", datetime.now().strftime("%Y-%m-%d"))
         self.failure_logdir = os.path.join(data_dir, "failure", datetime.now().strftime("%Y-%m-%d"))
         self.eval_logdir = os.path.join(data_dir, "eval", datetime.now().strftime("%Y-%m-%d"))
@@ -50,13 +33,33 @@ class Runner:
             os.makedirs(self.success_logdir)
         if not os.path.isdir(self.failure_logdir):
             os.makedirs(self.failure_logdir)
-        self.save_data = save_data
-        self.post_process = post_process
 
+        self.stop_camera_feed = None
+        self.display_thread = None
         self.display_camera_feed()
+    
+    def initialize(self, controller, controller_kwargs, disable_saving, disable_post_process, record_depth, record_pcd):
+        self.camera_kwargs = {"default": {"depth": record_depth, "pointcloud": record_pcd}}
+        self.env.set_camera_kwargs(self.camera_kwargs)
+        self.cam_ids = self.env.get_cam_ids()
+        self.cam_ids.sort()
+
+        self.camera_feed = None
+        _, full_cam_ids = self.get_camera_feed()
+        self.num_cameras = len(full_cam_ids)
+        self.full_cam_ids = full_cam_ids
+        self.advanced_calibration = False
+
+        self.controller = None
+        self.set_controller(controller, **controller_kwargs)
+
+        self.save_data = not disable_saving
+        self.post_process = not disable_post_process
+        self.traj_running = False
+        self.obs_pointer = {}
 
     def reset_robot(self):
-        self.env._robot.establish_connection()
+        self.env.establish_robot_connection()
         self.controller.reset_state()
         self.env.reset()
 
@@ -66,25 +69,25 @@ class Runner:
 
     def enable_advanced_calibration(self):
         self.advanced_calibration = True
-        self.env.camera_reader.enable_advanced_calibration()
+        self.env.enable_camera_advanced_calibration()
 
     def disable_advanced_calibration(self):
         self.advanced_calibration = False
-        self.env.camera_reader.disable_advanced_calibration()
+        self.env.disable_camera_advanced_calibration()
 
     def set_calibration_mode(self, cam_id):
-        self.env.camera_reader.set_calibration_mode(cam_id)
+        self.env.set_camera_calibration_mode(cam_id)
 
     def set_trajectory_mode(self):
-        self.env.camera_reader.set_trajectory_mode()
+        self.env.set_camera_trajectory_mode()
 
-    def run_trajectory(self, mode, reset_robot=True, wait_for_controller=True):
-        info = dict(
-            time=datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-            robot_serial_number=f"{robot_type}-{robot_serial_number}",
-            version_number=code_version,
-            controller=self.controller.get_name(),
-        )
+    def run_trajectory(self, mode="collect", reset_robot=True, wait_for_controller=True):
+        info = {
+            "time": datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+            "robot_serial_number": f"{robot_type}-{robot_serial_number}",
+            "version_number": code_version,
+            "controller": type(self.controller).__name__,
+        }
         traj_name = info["time"]
 
         if mode == "collect":
@@ -103,9 +106,11 @@ class Runner:
             os.makedirs(save_dir, exist_ok=True)
             os.makedirs(recording_dir, exist_ok=True)
             save_calibration_info(os.path.join(save_dir, "calibration.json"))
+            with open(os.path.join(save_dir, "info.json"), "w") as f:
+                json.dump(info, f, indent=4)
 
         self.traj_running = True
-        self.env._robot.establish_connection()
+        self.env.establish_robot_connection()
         controller_info = run_trajectory(
             self.env,
             controller=self.controller,
@@ -125,10 +130,24 @@ class Runner:
                 new_save_dir = os.path.join(self.success_logdir, traj_name)
                 shutil.move(save_dir, new_save_dir)
                 save_dir = new_save_dir
+        return str(save_dir)
+
+    def play_trajectory(self, traj_path="/home/franka/eva/trajectory.npy", action_space="cartesian_position", autoplay=True, skip_reset=False):
+        self.set_controller("replayer", traj_path=traj_path, action_space=action_space)
+        rollout_dir = self.run_trajectory("evaluate", wait_for_controller=not autoplay, reset_robot=not skip_reset)
+        if not autoplay:
+            self.print("Ready to reset, press any controller button...")
+            while True:
+                controller_info = self.get_controller_info()
+                if controller_info["success"] or controller_info["failure"]:
+                    break
+        self.reset_robot()
+        self.set_prev_controller()
+        return rollout_dir
     
     def calibrate_camera(self, cam_id, reset_robot=True):
         self.traj_running = True
-        self.env._robot.establish_connection()
+        self.env.establish_robot_connection()
         success = calibrate_camera(
             self.env,
             cam_id,
@@ -143,7 +162,7 @@ class Runner:
 
     def check_calibration(self, reset_robot=True):
         self.traj_running = True
-        self.env._robot.establish_connection()
+        self.env.establish_robot_connection()
         success = check_calibration(
             self.env,
             controller=self.controller,
@@ -206,14 +225,17 @@ class Runner:
     def display_camera_feed(self, camera_id=None):
         self.stop_camera_feed = threading.Event()
         def display_thread():
+            cv2.namedWindow("eva", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("eva", 1920, 720)
+            cv2.setWindowProperty("eva", cv2.WND_PROP_TOPMOST, 1)
             while not self.stop_camera_feed.is_set():
                 try:
-                    camera_feed, cam_ids = self.get_camera_feed()
+                    self.camera_feed, self.cam_ids = self.get_camera_feed()
                     if camera_id is not None:
-                        camera_feed = [feed for i, feed in enumerate(camera_feed) if str(camera_id) in cam_ids[i] ]
+                        self.camera_feed = [feed for i, feed in enumerate(self.camera_feed) if str(camera_id) in self.cam_ids[i] ]
                 except:
                     continue
-                cols = [np.vstack(camera_feed[i:i+2]) for i in range(0, len(camera_feed), 2)]
+                cols = [np.vstack(self.camera_feed[i:i+2]) for i in range(0, len(self.camera_feed), 2)]
                 grid = np.hstack(cols)
                 cv2.imshow("eva", cv2.cvtColor(cv2.resize(grid, (0, 0), fx=0.5, fy=0.5), cv2.COLOR_RGB2BGR))
 
@@ -231,32 +253,48 @@ class Runner:
             self.stop_camera_feed = None
             self.display_thread = None
     
+    def save_camera_feed(self):
+        if self.camera_feed is None:
+            self.camera_feed, self.cam_ids = self.get_camera_feed()
+        
+        output_dir = data_dir / "images" / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for cam_id, feed in zip(self.cam_ids, self.camera_feed):
+            im = cv2.cvtColor(feed, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(str(output_dir / f"{cam_id}.jpg"), im)
+        save_calibration_info(os.path.join(output_dir, "calibration.json"))
+        print(f"Saved pictures to {output_dir}")
+        return str(output_dir)
+    
     def set_action_space(self, action_space):
         self.env.set_action_space(action_space)
     
     def set_controller(self, controller, **kwargs):
         self.prev_controller = self.controller
-        if controller == "occulus":
-            self.controller = Occulus()
-        elif controller == "keyboard":
-            self.controller = Keyboard()
-        elif controller == "gello":
-            self.controller = Gello()
-        elif controller == "spacemouse": 
-            self.controller = SpaceMouse()
-        elif controller == "policy":
-            self.controller = Policy(**kwargs)
-        elif controller == "replayer":
-            self.controller = Replayer(**kwargs)
+        if isinstance(controller, str):
+            if controller == "occulus":
+                self.controller = Occulus()
+            elif controller == "keyboard":
+                self.controller = Keyboard()
+            elif controller == "gello":
+                self.controller = Gello()
+            elif controller == "spacemouse": 
+                self.controller = SpaceMouse()
+            elif controller == "policy":
+                self.controller = Policy(**kwargs)
+            elif controller == "replayer":
+                self.controller = Replayer(**kwargs)
+            else:
+                raise ValueError(f"Controller {controller} not recognized!")
         else:
-            raise ValueError(f"Controller {controller} not recognized!")
-        self.env.set_action_space(self.controller.action_space)
-        self.env.set_gripper_action_space(self.controller.gripper_action_space)
+            self.controller = controller
+        self.env.set_action_space(self.controller.get_action_space())
+        self.env.set_gripper_action_space(self.controller.get_gripper_action_space())
     
     def set_prev_controller(self):
         self.controller = self.prev_controller
-        self.env.set_action_space(self.controller.action_space)
-        self.env.set_gripper_action_space(self.controller.gripper_action_space)
+        self.env.set_action_space(self.controller.get_action_space())
+        self.env.set_gripper_action_space(self.controller.get_gripper_action_space())
     
     def reload_calibration(self):
         self.env.reload_calibration()
@@ -268,5 +306,15 @@ class Runner:
 
     def close(self):
         self.close_camera_feed()
-        self.env.close()
         self.controller.close()
+        if self.prev_controller is not None:
+            self.prev_controller.close()
+        self.env.close()
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+        if exc_type is not None:
+            raise exc_type(exc_value).with_traceback(traceback)

@@ -1,7 +1,8 @@
 
-from eva.manager import load_runner
+import eva
+from eva.eva import init_context, init_parser
 
 
 if __name__ == "__main__":
-    runner = load_runner()
-    runner.reset_robot()
+    with init_context() as runner:
+        runner.reset_robot()

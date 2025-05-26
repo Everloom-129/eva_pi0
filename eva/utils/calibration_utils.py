@@ -639,8 +639,8 @@ def calibrate_camera(
         assert isinstance(obs_pointer, dict), "Error in calibrate_camera, obs_pointer is not dict!"
 
     # Get Camera + Set Calibration Mode #
-    camera = env.camera_reader.get_camera(camera_id)
-    env.camera_reader.set_calibration_mode(camera_id)
+    camera = env.get_camera(camera_id)
+    env.set_camera_calibration_mode(camera_id)
     assert pause_time > (camera.latency / 1000), "Error in calibrate_camera, pause_time too short!"
 
     # Select Proper Calibration Procedure #
@@ -676,11 +676,12 @@ def calibrate_camera(
 
         # Get Action #
         action, _ = controller.forward({"robot_state": state})
+        action = np.array(action)
         # action[-1] = 0 # Keep gripper open
 
         # Regularize Control Frequency #
         comp_time = time.time() - start_time
-        sleep_left = (1 / env.control_hz) - comp_time
+        sleep_left = (1 / env.get_control_hz()) - comp_time
         if sleep_left > 0:
             time.sleep(sleep_left)
 
@@ -745,7 +746,7 @@ def calibrate_camera(
 
         # Regularize Control Frequency #
         comp_time = time.time() - start_time
-        sleep_left = (1 / env.control_hz) - comp_time
+        sleep_left = (1 / env.get_control_hz()) - comp_time
         if sleep_left > 0:
             time.sleep(sleep_left)
 
@@ -823,8 +824,9 @@ def check_calibration(
             obs_pointer.update(cam_obs)
 
         action, _ = controller.forward({"robot_state": state})
+        action = np.array(action)
         comp_time = time.time() - start_time
-        sleep_left = (1 / env.control_hz) - comp_time
+        sleep_left = (1 / env.get_control_hz()) - comp_time
         if sleep_left > 0:
             time.sleep(sleep_left)
         skip_step = wait_for_controller and (not controller_info["movement_enabled"])

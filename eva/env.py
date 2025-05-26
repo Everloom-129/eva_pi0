@@ -10,15 +10,11 @@ from eva.utils.parameters import camera_type_dict, hand_camera_id, nuc_ip
 from eva.utils.geometry_utils import change_pose_frame
 from eva.utils.misc_utils import time_ms
 
+
 class FrankaEnv(gym.Env):
-    def __init__(self, action_space="cartesian_velocity", gripper_action_space="velocity", camera_kwargs={}, do_reset=True):
-        # Initialize Gym Environment
+    def __init__(self, action_space="cartesian_velocity", gripper_action_space="velocity", camera_kwargs={}):
         super().__init__()
 
-        self.set_action_space(action_space)
-        self.set_gripper_action_space(gripper_action_space)
-
-        # Robot Configuration
         self.reset_joints = np.array([0, -1 / 5 * np.pi, 0, -4 / 5 * np.pi, 0, 3 / 5 * np.pi, 0.0])
         self.control_hz = 15
 
@@ -28,14 +24,18 @@ class FrankaEnv(gym.Env):
         else:
             self._robot = ServerInterface(ip_address=nuc_ip)
 
-        # Create Cameras
         self.camera_reader = MultiCameraWrapper(camera_kwargs)
         self.calibration_dict = load_calibration_info()
         self.camera_type_dict = camera_type_dict
 
-        # Reset Robot
-        if do_reset:
-            self.reset()
+        self.initialize(action_space, gripper_action_space, camera_kwargs)
+    
+    def initialize(self, action_space, gripper_action_space, camera_kwargs):
+        # Note that in most use cases, Runner will set each of these parameters separately
+        self.set_action_space(action_space)
+        self.set_gripper_action_space(gripper_action_space)
+        self.camera_reader.set_camera_kwargs(camera_kwargs)
+        self.reset()
 
     def step(self, action):
         # Check Action

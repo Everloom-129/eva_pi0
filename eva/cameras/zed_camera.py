@@ -3,7 +3,7 @@ from copy import deepcopy
 import cv2
 import numpy as np
 
-from eva.utils.parameters import hand_camera_id
+from eva.utils.parameters import hand_camera_id, camera_flip_dict
 from eva.utils.misc_utils import time_ms
 
 try:
@@ -28,14 +28,6 @@ def gather_zed_cameras():
 
 resize_func_map = {"cv2": cv2.resize, None: None}
 
-standard_params = dict(
-    depth_minimum_distance=0.1, depth_mode = sl.DEPTH_MODE.NEURAL, camera_resolution=sl.RESOLUTION.HD720, depth_stabilization=False, camera_fps=60, camera_image_flip=sl.FLIP_MODE.OFF
-)
-
-advanced_params = dict(
-    depth_minimum_distance=0.1, camera_resolution=sl.RESOLUTION.HD2K, depth_stabilization=False, camera_fps=15, camera_image_flip=sl.FLIP_MODE.OFF
-)
-
 
 class ZedCamera:
     def __init__(self, camera):
@@ -46,6 +38,17 @@ class ZedCamera:
         self.current_mode = None
         self._current_params = None
         self._extriniscs = {}
+
+        
+        flip = sl.FLIP_MODE.ON if camera_flip_dict[self.serial_number] else sl.FLIP_MODE.OFF
+        self.standard_params = dict(
+            depth_minimum_distance=200, depth_mode = sl.DEPTH_MODE.NEURAL, camera_resolution=sl.RESOLUTION.HD720, depth_stabilization=False, camera_fps=60, camera_image_flip=flip,
+            camera_disable_self_calib=True
+        )
+        self.advanced_params = dict(
+            depth_minimum_distance=200, camera_resolution=sl.RESOLUTION.HD2K, depth_stabilization=False, camera_fps=15, camera_image_flip=flip,
+            camera_disable_self_calib=True
+        )
 
         # Open Camera #
         print("Opening Zed: ", self.serial_number)
@@ -85,12 +88,12 @@ class ZedCamera:
         self.resizer_resolution = (0, 0)
 
         # Set Mode #
-        change_settings_1 = (self.high_res_calibration) and (self._current_params != advanced_params)
-        change_settings_2 = (not self.high_res_calibration) and (self._current_params != standard_params)
+        change_settings_1 = (self.high_res_calibration) and (self._current_params != self.advanced_params)
+        change_settings_2 = (not self.high_res_calibration) and (self._current_params != self.standard_params)
         if change_settings_1:
-            self._configure_camera(advanced_params)
+            self._configure_camera(self.advanced_params)
         if change_settings_2:
-            self._configure_camera(standard_params)
+            self._configure_camera(self.standard_params)
         self.current_mode = "calibration"
 
     def set_trajectory_mode(self):
@@ -107,9 +110,9 @@ class ZedCamera:
             self.resizer_resolution = self.traj_resolution
 
         # Set Mode #
-        change_settings = self._current_params != standard_params
+        change_settings = self._current_params != self.standard_params
         if change_settings:
-            self._configure_camera(standard_params)
+            self._configure_camera(self.standard_params)
         self.current_mode = "trajectory"
 
     def _configure_camera(self, init_params):
@@ -131,7 +134,7 @@ class ZedCamera:
         self._current_params = init_params
         sl_params = sl.InitParameters(**init_params)
         sl_params.set_from_serial_number(int(self.serial_number))
-        sl_params.camera_image_flip = sl.FLIP_MODE.OFF
+        sl_params.camera_image_flip = sl.FLIP_MODE.ON if camera_flip_dict[self.serial_number] else sl.FLIP_MODE.OFF
         status = self._cam.open(sl_params)
         if status != sl.ERROR_CODE.SUCCESS:
             raise RuntimeError("Camera Failed To Open")
@@ -230,3 +233,4 @@ class ZedCamera:
 
     def is_running(self):
         return self.current_mode != "disabled"
+    

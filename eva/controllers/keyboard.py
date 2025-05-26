@@ -1,10 +1,11 @@
 
 import numpy as np
 
+from eva.controllers.controller import Controller
 from eva.utils.geometry_utils import add_angles, euler_to_quat, quat_diff, quat_to_euler, rmat_to_quat
 
 
-class Keyboard:
+class Keyboard(Controller):
     def __init__(
         self,
         max_lin_vel: float = 1,
@@ -56,9 +57,6 @@ class Keyboard:
             """
         )
         print("Press space to unlock control...")
-
-    def get_name(self):
-        return "keyboard"
 
     def reset_state(self):
         self.pressed_keys.clear()

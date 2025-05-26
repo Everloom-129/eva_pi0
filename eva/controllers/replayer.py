@@ -1,13 +1,18 @@
 
 import numpy as np
 
+from eva.controllers.controller import Controller
 from eva.utils.trajectory_utils import TrajectoryReader
 
 
-class Replayer:
+class Replayer(Controller):
     def __init__(self, traj_path, action_space="cartesian_position", gripper_action_space="position"):
         self.action_space = action_space
         self.gripper_action_space = gripper_action_space
+        self.gripper_action_space_hack = False
+        if self.gripper_action_space == "position":
+            self.gripper_action_space = "velocity"
+            self.gripper_action_space_hack = True
 
         if traj_path.endswith(".npz"):
             if action_space == "cartesian_velocity":
@@ -47,11 +52,7 @@ class Replayer:
     def get_info(self):
         return self._state
 
-    def get_name(self):
-        return "replayer"
-        
     def forward(self, observation):
-        print("Movement enabled:", self._state["movement_enabled"])
         cur_ee_pos = np.zeros((7,))
         cur_ee_pos[:6] = observation["robot_state"]["cartesian_position"]
         if self.delay > 0:
@@ -62,6 +63,15 @@ class Replayer:
             self.delay -= 1
         else:
             action = self.traj[self.t]
+
+            if self.gripper_action_space_hack:
+                # The Robotiq gripper will stop moving if it encounters a force limit (safety feature within polymetis)
+                # In some scenarios, this will punish imprecise grasps by preventing the gripper from closing more once it has room
+                # This happens less with gripper velocity control, so we convert gripper position to velocity
+                gripper_action_gain = 3.0
+                action[-1] = (action[-1] - observation["robot_state"]["gripper_position"]) * gripper_action_gain
+                action[-1] = np.clip(action[-1], -1, 1)
+
             self.t = self.t + 1
             if self.t >= self.traj_len:
                 self._state["success"] = True
@@ -70,3 +80,6 @@ class Replayer:
     def reset_state(self):
         self.t = 0
         self.delay = 0
+
+    def close(self):
+        pass

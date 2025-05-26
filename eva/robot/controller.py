@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import zerorpc
 from polymetis import GripperInterface, RobotInterface
+import threading
 
 from eva.utils.parameters import sudo_password
 from eva.utils.misc_utils import run_terminal_command, run_threaded_command
@@ -14,11 +15,6 @@ from eva.robot.ik_solver import RobotIKSolver
 
 class FrankaController:
     def launch_controller(self):
-        try:
-            self.kill_controller()
-        except:
-            pass
-
         dir_path = os.path.dirname(os.path.realpath(__file__))
         self._robot_process = run_terminal_command(
             "echo " + sudo_password + " | sudo -S " + "bash " + dir_path + "/launch_robot.sh"
@@ -26,25 +22,25 @@ class FrankaController:
         self._gripper_process = run_terminal_command(
             "echo " + sudo_password + " | sudo -S " + "bash " + dir_path + "/launch_gripper.sh"
         )
-        self._server_launched = True
         time.sleep(5)
+        self._server_launched = True
 
     def launch_robot(self):
         self._robot = RobotInterface(ip_address="localhost")
         self._gripper = GripperInterface(ip_address="localhost")
         self._max_gripper_width = self._gripper.metadata.max_width
         self._ik_solver = RobotIKSolver()
-
+    
     def kill_controller(self):
         self._robot_process.kill()
         self._gripper_process.kill()
+        time.sleep(1)
+        self._server_launched = False
 
     def update_command(self, command, action_space="cartesian_velocity", gripper_action_space="velocity", blocking=False):
         action_dict = self.create_action_dict(command, action_space=action_space, gripper_action_space=gripper_action_space)
-
         self.update_joints(action_dict["joint_position"], velocity=False, blocking=blocking)
         self.update_gripper(action_dict["gripper_position"], velocity=False, blocking=blocking)
-
         return action_dict
 
     def update_pose(self, command, velocity=False, blocking=False):
@@ -82,21 +78,55 @@ class FrankaController:
         def helper_non_blocking():
             if not self._robot.is_running_policy():
                 self._robot.start_cartesian_impedance()
+                timeout = time.time() + 1
+                while not self._robot.is_running_policy():
+                    print("Waiting for cartesian impedance to start (non blocking)...")
+                    time.sleep(0.1)
+                    if time.time() > timeout:
+                        print("Timeout while waiting for cartesian impedance to start (helper non blocking), retrying...")
+                        self._robot.start_cartesian_impedance()
+                        timeout = time.time() + 1
             try:
                 self._robot.update_desired_joint_positions(command)
-            except grpc.RpcError:
+            except grpc.RpcError as e:
+                print(e)
                 pass
 
         if blocking:
-            if self._robot.is_running_policy():
-                self._robot.terminate_current_policy()
-            try:
-                time_to_go = self.adaptive_time_to_go(command)
-                self._robot.move_to_joint_positions(command, time_to_go=time_to_go)
-            except grpc.RpcError:
-                pass
+            def helper_blocking():
+                if self._robot.is_running_policy():
+                    self._robot.terminate_current_policy()
+                    time_to_go = None
+                else:
+                    time_to_go = self.adaptive_time_to_go(command)
+                try:
+                    self._robot.move_to_joint_positions(command, time_to_go=time_to_go)
+                except grpc.RpcError as e:
+                    pass
 
-            self._robot.start_cartesian_impedance()
+                self._robot.start_cartesian_impedance()
+                timeout = time.time() + 1
+                while not self._robot.is_running_policy():
+                    print("Waiting for cartesian impedance to start...")
+                    time.sleep(0.1)
+                    if time.time() > timeout:
+                        print("Timeout while waiting for cartesian impedance to start, retrying...")
+                        self._robot.start_cartesian_impedance()
+                        timeout = time.time() + 1
+
+            while True:
+                # This part freezes sometimes, so we'll check with a timeout
+                thread = threading.Thread(target=helper_blocking)
+                thread.start()
+                thread.join(timeout=20.0)
+                if thread.is_alive():
+                    print("Timed out in update_joints!")
+                    print("Re-launching controller and robot...")
+                    self.kill_controller()
+                    self.launch_controller()
+                    self.launch_robot()
+                else:
+                    break
         else:
             run_threaded_command(helper_non_blocking)
 
@@ -110,21 +140,16 @@ class FrankaController:
 
     def add_noise_to_joints(self, original_joints, cartesian_noise):
         original_joints = torch.Tensor(original_joints)
-
         pos, quat = self._robot.robot_model.forward_kinematics(original_joints)
         curr_pose = pos.tolist() + quat_to_euler(quat).tolist()
         new_pose = add_poses(cartesian_noise, curr_pose)
-
         new_pos = torch.Tensor(new_pose[:3])
         new_quat = torch.Tensor(euler_to_quat(new_pose[3:]))
-
         noisy_joints, success = self._robot.solve_inverse_kinematics(new_pos, new_quat, original_joints)
-
         if success:
             desired_joints = noisy_joints
         else:
             desired_joints = original_joints
-
         return desired_joints.tolist()
 
     def get_joint_positions(self):
@@ -175,8 +200,8 @@ class FrankaController:
         return clamped_time_to_go
 
     def create_action_dict(self, action, action_space, gripper_action_space="velocity", robot_state=None):
-        assert action_space in ["cartesian_position", "joint_position", "cartesian_velocity", "joint_velocity"]
-        assert gripper_action_space in ["velocity", "position"]
+        assert action_space in ["cartesian_position", "joint_position", "cartesian_velocity", "joint_velocity"], f"Invalid action space: {action_space}"
+        assert gripper_action_space in ["velocity", "position"], f"Invalid gripper action space: {gripper_action_space}"
         if robot_state is None:
             robot_state = self.get_robot_state()[0]
         action_dict = {"robot_state": robot_state}
@@ -224,10 +249,13 @@ class FrankaController:
                 action_dict["joint_velocity"] = joint_velocity.tolist()
 
         return action_dict
+    
+    def close(self):
+        pass
 
 
 if __name__ == "__main__":
     robot_client = FrankaController()
-    s = zerorpc.Server(robot_client)
+    s = zerorpc.Server(robot_client, heartbeat=None)
     s.bind("tcp://0.0.0.0:4242")
     s.run()

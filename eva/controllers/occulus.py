@@ -3,6 +3,7 @@ import time
 import numpy as np
 from oculus_reader.reader import OculusReader
 
+from eva.controllers.controller import Controller
 from eva.utils.geometry_utils import add_angles, euler_to_quat, quat_diff, quat_to_euler, rmat_to_quat
 from eva.utils.misc_utils import run_threaded_command
 
@@ -15,7 +16,7 @@ def vec_to_reorder_mat(vec):
     return X
 
 
-class Occulus:
+class Occulus(Controller):
     def __init__(
         self,
         right_controller: bool = True,
@@ -47,9 +48,6 @@ class Occulus:
         # Start State Listening Thread #
         self.running = True
         run_threaded_command(self._update_internal_state)
-
-    def get_name(self):
-        return "occulus"
 
     def reset_state(self):
         self._state = {

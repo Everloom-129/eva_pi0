@@ -3,10 +3,11 @@ import zmq
 import numpy as np
 from collections.abc import Callable
 
+from eva.controllers.controller import Controller
 from eva.utils.misc_utils import run_threaded_command
 
 
-class GELLODevice():
+class GELLODevice:
     def __init__(self):
         super().__init__()
         self.context = zmq.Context()
@@ -24,7 +25,7 @@ class GELLODevice():
         return gello_action
 
 
-class Gello:
+class Gello(Controller):
     def __init__(
         self,
         right_controller: bool = True,
@@ -55,9 +56,6 @@ class Gello:
         print("Warning: GELLO controller is experimental!")
         print("Since the GELLO motors are not strong enough to hold itself up, it cannot easily match the Franka. During init, the Franka will jerk toward the GELLO's joint positions.")
         print("This should be replaced by FACTR once it's released.")
-
-    def get_name(self):
-        return "gello"
 
     def reset_state(self):
         self._state = {

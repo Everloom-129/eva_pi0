@@ -11,19 +11,19 @@ from eva.cameras.svo_reader import SVOReader
 
 
 class MultiCameraWrapper:
-    def __init__(self, camera_kwargs={}):
-        # Open Cameras #
+    def __init__(self, camera_kwargs=None):
+        if camera_kwargs is None:
+            camera_kwargs = {"default": {"depth": False, "pointcloud": False}}
         zed_cameras = gather_zed_cameras()
         self.camera_dict = {cam.serial_number: cam for cam in zed_cameras}
-
-        # Set Correct Parameters #
+        self.set_camera_kwargs(camera_kwargs)
+        self.set_trajectory_mode()
+    
+    def set_camera_kwargs(self, camera_kwargs):
         for cam_id in self.camera_dict.keys():
             cam_type = get_camera_type(cam_id)
-            curr_cam_kwargs = camera_kwargs[cam_type]
+            curr_cam_kwargs = camera_kwargs[cam_type] if cam_type in camera_kwargs else camera_kwargs["default"]
             self.camera_dict[cam_id].set_reading_parameters(**curr_cam_kwargs)
-
-        # Launch Camera #
-        self.set_trajectory_mode()
 
     ### Calibration Functions ###
     def get_camera(self, camera_id):
@@ -64,9 +64,6 @@ class MultiCameraWrapper:
 
     ### Data Storing Functions ###
     def start_recording(self, recording_folderpath):
-        # subdir = os.path.join(recording_folderpath, "SVO")
-        # if not os.path.isdir(subdir):
-        #     os.makedirs(subdir)
         for cam in self.camera_dict.values():
             filepath = os.path.join(recording_folderpath, cam.serial_number + ".svo2")
             cam.start_recording(filepath)
@@ -101,14 +98,14 @@ class MultiCameraWrapper:
 
 class RecordedMultiCameraWrapper:
     def __init__(self, recording_folderpath, camera_kwargs={}):
-        # Save Camera Info #
+        if camera_kwargs is None:
+            camera_kwargs = {"default": {"depth": False, "pointcloud": False}}
         self.camera_kwargs = camera_kwargs
 
         # Open Camera Readers #
         svo_filepaths = glob.glob(recording_folderpath + "/*.svo2")
         mp4_filepaths = glob.glob(recording_folderpath + "/*.mp4")
-        # all_filepaths = svo_filepaths + mp4_filepaths
-        all_filepaths = svo_filepaths  # TODO Don't need to process mp4, not sure why this is here
+        all_filepaths = svo_filepaths  # Only process SVO
 
         self.camera_dict = {}
         for f in all_filepaths:
@@ -125,7 +122,7 @@ class RecordedMultiCameraWrapper:
 
             self.camera_dict[serial_number] = Reader(f, serial_number)
 
-    def read_cameras(self, index=None, camera_type_dict={}, timestamp_dict={}):
+    def read_cameras(self, index=None, timestamp_dict={}):
         full_obs_dict = defaultdict(dict)
 
         # Read Cameras In Randomized Order #
@@ -133,8 +130,8 @@ class RecordedMultiCameraWrapper:
         random.shuffle(all_cam_ids)
 
         for cam_id in all_cam_ids:
-            cam_type = camera_type_dict[cam_id]
-            curr_cam_kwargs = self.camera_kwargs[cam_type]
+            cam_type = get_camera_type(cam_id)
+            curr_cam_kwargs = self.camera_kwargs[cam_type] if cam_type in self.camera_kwargs else self.camera_kwargs["default"]
             self.camera_dict[cam_id].set_reading_parameters(**curr_cam_kwargs)
 
             timestamp = timestamp_dict.get(cam_id + "_frame_received", None)

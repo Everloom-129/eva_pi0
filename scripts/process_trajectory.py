@@ -1,3 +1,4 @@
+
 import glob
 from tqdm import tqdm
 import numpy as np
@@ -19,21 +20,12 @@ from collections import defaultdict
 
 
 def process_data(input_path, process_depth=False, process_pcd=False):
-    if input_path is None:
-        data_dirs = [get_latest_trajectory()]
-        print(f"Processing latest trajectory: {data_dirs[0]}")
-    else:
-        data_dirs = []
-        if os.path.exists(os.path.join(input_path, "trajectory.h5")):
-            data_dirs.append(input_path)
-    # else:
-    #     data_dirs = glob.glob(str(input_path) + "*/**/", recursive=True)
-    #     data_dirs = [d for d in data_dirs if os.path.exists(os.path.join(d, "trajectory.h5"))]
+    data_dirs = [d for d in glob.glob(str(input_path) + "**/", recursive=True)]
+    data_dirs = [d for d in data_dirs if os.path.exists(os.path.join(d, "trajectory.h5"))]
+    print("Processing data directories:")
     print(data_dirs)
     image_transform_kwargs = {"remove_alpha": True, "bgr_to_rgb": True, "augment": False}
-    camera_kwargs = defaultdict(
-        lambda: {"depth": process_depth, "pointcloud": process_pcd}
-    )
+    camera_kwargs = {"default": {"depth": process_depth, "pointcloud": process_pcd}}
 
     timestep_processor = TimestepProcessor(
         camera_extrinsics=["fixed_camera", "hand_camera", "varied_camera"],
@@ -108,12 +100,14 @@ def process_data(input_path, process_depth=False, process_pcd=False):
                 im.save(frames_dir / camera_type / f"{t:05d}.jpg")
 
             if process_depth:
-                depth = timestep_processor.get_depth(traj[t], camera_type)
-                np.save(depth_dir / camera_type / f"{t:05d}.npy", depth)
+                for camera_type in camera_types:
+                    depth = timestep_processor.get_depth(traj[t], camera_type)
+                    np.save(depth_dir / camera_type / f"{t:05d}.npy", depth)
             
             if process_pcd:
-                pcd = timestep_processor.get_pcd(traj[t], camera_type)
-                np.save(pcd_dir / camera_type / f"{t:05d}.npy", pcd)
+                for camera_type in camera_types:
+                    pcd = timestep_processor.get_pcd(traj[t], camera_type)
+                    np.save(pcd_dir / camera_type / f"{t:05d}.npy", pcd)
 
         trajectory = {"states": np.array(states), "actions_pos": np.array(actions_pos), "actions_vel": np.array(actions_vel)}
         np.savez(f"{traj_dir}/trajectory.npz", **trajectory)
@@ -125,18 +119,6 @@ def process_data(input_path, process_depth=False, process_pcd=False):
             ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
-def process_data_dir(input_dir):
-    "Calls process_data on all directories in input_dir"
-    input_dir = Path(input_dir)
-    if not input_dir.exists():
-        raise ValueError(f"Input directory {input_dir} does not exist")
-    if not input_dir.is_dir():
-        raise ValueError(f"Input path {input_dir} is not a directory")
-    data_dirs = glob.glob(str(input_dir) + "*/**/", recursive=True)
-    data_dirs = [d for d in data_dirs if os.path.exists(os.path.join(d, "trajectory.h5"))]
-    for data_dir in tqdm(data_dirs):
-        process_data(Path(data_dir))
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("input_path", type=str, nargs="?", default=None)
@@ -144,18 +126,6 @@ if __name__ == "__main__":
     parser.add_argument("--process_pcd", action="store_true")
     args = parser.parse_args()
 
-    path = None if args.input_path is None else Path(args.input_path)
-    # check if path is inidividual directory by checking if trajectory.h5 exists directly under it
-    if path is not None and path.is_dir() and not os.path.exists(os.path.join(path, "trajectory.h5")):
-        process_data_dir(path)
-        # scp to exx@158.130.52.14
-        import subprocess
-        source_path = path
-        dest_path = "exx@158.130.52.14:/home/exx/Projects/vlm_trajectory_wliang/data/auto_demos/"
-        subprocess.run(["scp", "-r", source_path, dest_path],
-                            check=True,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True)
-    else:
-        process_data(path, args.process_depth, args.process_pcd)
+    if args.input_path is None:
+        args.input_path = get_latest_trajectory()
+    process_data(Path(args.input_path), args.process_depth, args.process_pcd)

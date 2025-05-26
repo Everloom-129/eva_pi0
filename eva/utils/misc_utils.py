@@ -25,8 +25,11 @@ def run_multiprocessed_command(command, args=()):
     process.start()
     return process
 
-def get_latest_trajectory():
-    data_dirs = glob.glob(str(data_dir) + "*/**/", recursive=True)
+def get_latest_trajectory(success_only=False):
+    if success_only:
+        data_dirs = glob.glob(str(data_dir) + "*/success/**/", recursive=True)
+    else:
+        data_dirs = glob.glob(str(data_dir) + "*/**/", recursive=True)
     data_dirs = [d for d in data_dirs if os.path.exists(os.path.join(d, "trajectory.h5"))]
     data_dirs.sort(key=os.path.getmtime)
     data_dirs = data_dirs[-1:]

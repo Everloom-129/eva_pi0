@@ -5,6 +5,8 @@ import math
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
+from eva.controllers.controller import Controller
+
 
 def unit_vector(data, axis=None, out=None):
     """
@@ -464,7 +466,7 @@ class SpaceMouseInterface:
                 time.sleep(0.1)
 
 
-class SpaceMouse:
+class SpaceMouse(Controller):
     def __init__(
         self,
         max_lin_vel: float = 3,
@@ -507,9 +509,6 @@ class SpaceMouse:
         print("- 'y' key: success")
         print("- 'n' key: failure")
         print("- 'space' key: reset origin")
-
-    def get_name(self):
-        return "spacemouse"
 
     def reset_state(self):
         """Reset controller state"""

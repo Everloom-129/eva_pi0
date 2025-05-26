@@ -280,13 +280,13 @@ def run_trajectory(
         assert save_filepath is not None, "Must save data to post process"
 
     controller.reset_state()
-    env.camera_reader.set_trajectory_mode()
+    env.set_camera_trajectory_mode()
 
     # Prepare Data Writers If Necesary #
     if save_filepath:
         traj_writer = TrajectoryWriter(save_filepath, metadata=metadata, post_process=post_process)
     if recording_folderpath:
-        env.camera_reader.start_recording(recording_folderpath)
+        env.start_camera_recording(recording_folderpath)
 
     # Prepare For Trajectory #
     num_steps = 0
@@ -314,7 +314,7 @@ def run_trajectory(
         # Regularize Control Frequency #
         control_timestamps["sleep_start"] = time_ms()
         comp_time = time_ms() - control_timestamps["step_start"]
-        sleep_left = (1 / env.control_hz) - (comp_time / 1000)
+        sleep_left = (1 / env.get_control_hz()) - (comp_time / 1000)
         if sleep_left > 0:
             time.sleep(sleep_left)
 
@@ -343,7 +343,7 @@ def run_trajectory(
         # Close Files And Return #
         if end_traj:
             if recording_folderpath:
-                env.camera_reader.stop_recording()
+                env.stop_camera_recording()
             if save_filepath:
                 traj_writer.close(metadata=controller_info)
             return controller_info

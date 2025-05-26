@@ -9,11 +9,9 @@ robot_type = "fr3"  # 'panda' or 'fr3'
 robot_serial_number = ""
 
 ##### CAMERAS #####
-hand_camera_id = '14436910'
-varied_camera_1_id = '25455306'
-# varied_camera_2_id = '27085680'
-# varied_camera_1_id = '26368109'
-varied_camera_2_id = '27085680'
+hand_camera_id = '15512737'
+varied_camera_1_id = '26368109'
+varied_camera_2_id = '25455306'
 
 camera_type_dict = {
     hand_camera_id: 0,
@@ -24,6 +22,11 @@ camera_type_to_string_dict = {
     0: "hand_camera",
     1: "varied_camera_1",
     2: "varied_camera_2",
+}
+camera_flip_dict = {
+    hand_camera_id: False,
+    varied_camera_1_id: True,
+    varied_camera_2_id: True,
 }
 
 def get_camera_type(cam_id):
