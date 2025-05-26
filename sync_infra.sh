@@ -1,1 +1,1 @@
-rsync -avz --exclude=".git" --exclude="data" /home/franka/eva franka@172.16.0.4:/home/franka/
+rsync -avz --exclude=".git" --exclude="data" /home/franka/eva franka@NUC:/home/franka/
