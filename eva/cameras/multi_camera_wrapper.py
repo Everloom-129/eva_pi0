@@ -12,14 +12,14 @@ from eva.cameras.svo_reader import SVOReader
 
 class MultiCameraWrapper:
     def __init__(self, camera_kwargs=None):
-        if camera_kwargs is None:
-            camera_kwargs = {"default": {"depth": False, "pointcloud": False}}
         zed_cameras = gather_zed_cameras()
         self.camera_dict = {cam.serial_number: cam for cam in zed_cameras}
         self.set_camera_kwargs(camera_kwargs)
         self.set_trajectory_mode()
     
     def set_camera_kwargs(self, camera_kwargs):
+        if camera_kwargs is None:
+            camera_kwargs = {"default": {"depth": False, "pointcloud": False}}
         for cam_id in self.camera_dict.keys():
             cam_type = get_camera_type(cam_id)
             curr_cam_kwargs = camera_kwargs[cam_type] if cam_type in camera_kwargs else camera_kwargs["default"]

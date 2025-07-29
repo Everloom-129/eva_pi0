@@ -12,10 +12,11 @@ from eva.utils.misc_utils import time_ms
 
 
 class FrankaEnv(gym.Env):
-    def __init__(self, action_space="cartesian_velocity", gripper_action_space="velocity", camera_kwargs={}):
+    def __init__(self, action_space="cartesian_velocity", gripper_action_space="velocity", camera_kwargs=None):
         super().__init__()
 
         self.reset_joints = np.array([0, -1 / 5 * np.pi, 0, -4 / 5 * np.pi, 0, 3 / 5 * np.pi, 0.0])
+        # self.reset_joints = np.array([0, -1 / 2 * np.pi, 0, -7 / 8 * np.pi, 0, 5 / 12 * np.pi, 0.0])
         self.control_hz = 15
 
         if nuc_ip is None:
@@ -41,7 +42,9 @@ class FrankaEnv(gym.Env):
         # Check Action
         assert len(action) == self.DoF, f"Provided action dimension ({len(action)}) does not match expected ({self.DoF}) for action space {self.action_space}!"
         if self.check_action_range:
-            assert (action.max() <= 1) and (action.min() >= -1)
+            if (action.max() > 1) or (action.min() < -1):
+                print(f"Action {action} exceeds range [-1, 1], clipping!")
+                action = np.clip(action, -1, 1)
 
         # Update Robot
         action_info = self.update_robot(
@@ -71,6 +74,21 @@ class FrankaEnv(gym.Env):
 
     def read_cameras(self):
         return self.camera_reader.read_cameras()
+    
+    def set_camera_trajectory_mode(self):
+        self.camera_reader.set_trajectory_mode()
+    
+    def set_camera_calibration_mode(self, cam_id):
+        self.camera_reader.set_calibration_mode(cam_id)
+    
+    def start_camera_recording(self, recording_folderpath):
+        self.camera_reader.start_recording(recording_folderpath)
+    
+    def stop_camera_recording(self):
+        self.camera_reader.stop_recording()
+    
+    def establish_robot_connection(self):
+        self._robot.establish_connection()
 
     def get_state(self):
         read_start = time_ms()
@@ -78,7 +96,10 @@ class FrankaEnv(gym.Env):
         timestamp_dict["read_start"] = read_start
         timestamp_dict["read_end"] = time_ms()
         return state_dict, timestamp_dict
-
+    
+    def set_camera_kwargs(self, camera_kwargs):
+        self.camera_reader.set_camera_kwargs(camera_kwargs)
+    
     def get_camera_extrinsics(self, state_dict):
         # Adjust gripper camera by current pose
         extrinsics = deepcopy(self.calibration_dict)
@@ -116,6 +137,9 @@ class FrankaEnv(gym.Env):
         obs_dict["camera_intrinsics"] = intrinsics
 
         return obs_dict
+    
+    def get_control_hz(self):
+        return self.control_hz
     
     def set_action_space(self, action_space):
         print(f"Set action space to {action_space}")

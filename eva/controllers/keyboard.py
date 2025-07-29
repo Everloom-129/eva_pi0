@@ -78,7 +78,6 @@ class Keyboard(Controller):
         elif key == 13:
             self._state["success"] = True
         elif key == 8:
-            print("Failure")
             self._state["failure"] = True
         else:
             self.pressed_keys.add(chr(key))

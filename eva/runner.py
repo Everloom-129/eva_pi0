@@ -8,12 +8,13 @@ import threading
 import numpy as np
 import json
 
-from eva.controllers.occulus import Occulus
+from eva.controllers.oculus import Oculus
 from eva.controllers.spacemouse import SpaceMouse
 from eva.controllers.keyboard import Keyboard
 from eva.controllers.gello import Gello
 from eva.controllers.policy import Policy
 from eva.controllers.replayer import Replayer
+from eva.controllers.proxy import Proxy
 
 from eva.utils.trajectory_utils import run_trajectory
 from eva.utils.calibration_utils import calibrate_camera, check_calibration, check_calibration_info, save_calibration_info
@@ -22,7 +23,7 @@ from eva.utils.parameters import hand_camera_id, code_version, robot_serial_numb
 
 
 class Runner:
-    def __init__(self, env, controller="occulus", controller_kwargs={}, disable_saving=False, disable_post_process=False, record_depth=False, record_pcd=False, **kwargs):
+    def __init__(self, env, controller="oculus", controller_kwargs={}, disable_saving=False, disable_post_process=False, record_depth=False, record_pcd=False, **kwargs):
         self.env = env
         self.initialize(controller, controller_kwargs, disable_saving, disable_post_process, record_depth, record_pcd)
 
@@ -39,10 +40,9 @@ class Runner:
         self.display_camera_feed()
     
     def initialize(self, controller, controller_kwargs, disable_saving, disable_post_process, record_depth, record_pcd):
+        self.traj_running = False
         self.camera_kwargs = {"default": {"depth": record_depth, "pointcloud": record_pcd}}
         self.env.set_camera_kwargs(self.camera_kwargs)
-        self.cam_ids = self.env.get_cam_ids()
-        self.cam_ids.sort()
 
         self.camera_feed = None
         _, full_cam_ids = self.get_camera_feed()
@@ -55,7 +55,6 @@ class Runner:
 
         self.save_data = not disable_saving
         self.post_process = not disable_post_process
-        self.traj_running = False
         self.obs_pointer = {}
 
     def reset_robot(self):
@@ -272,8 +271,8 @@ class Runner:
     def set_controller(self, controller, **kwargs):
         self.prev_controller = self.controller
         if isinstance(controller, str):
-            if controller == "occulus":
-                self.controller = Occulus()
+            if controller == "oculus":
+                self.controller = Oculus()
             elif controller == "keyboard":
                 self.controller = Keyboard()
             elif controller == "gello":
@@ -284,6 +283,8 @@ class Runner:
                 self.controller = Policy(**kwargs)
             elif controller == "replayer":
                 self.controller = Replayer(**kwargs)
+            elif controller == "proxy":
+                self.controller = Proxy(**kwargs)
             else:
                 raise ValueError(f"Controller {controller} not recognized!")
         else:

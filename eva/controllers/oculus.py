@@ -16,7 +16,7 @@ def vec_to_reorder_mat(vec):
     return X
 
 
-class Occulus(Controller):
+class Oculus(Controller):
     def __init__(
         self,
         right_controller: bool = True,

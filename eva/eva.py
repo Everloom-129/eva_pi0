@@ -12,16 +12,16 @@ def init(args=None):
 
     try:
         runner = load_runner()
-        runner.initialize(**vars(args))
+        runner.initialize(args.controller, args.controller_kwargs, args.disable_saving, args.disable_post_process, args.record_depth, args.record_pcd)
     except:
         try:
             env = load_env()
-            env.initialize(**vars(args))
+            env.initialize(args.action_space, args.gripper_action_space, args.camera_kwargs)
         except:
             from eva.env import FrankaEnv
             env = FrankaEnv()
         from eva.runner import Runner
-        runner = Runner(env=env, **vars(args))
+        runner = Runner(env, controller=args.controller, controller_kwargs=args.controller_kwargs, disable_saving=args.disable_saving, disable_post_process=args.disable_post_process, record_depth=args.record_depth, record_pcd=args.record_pcd)
     return runner
 
 
@@ -40,7 +40,7 @@ def init_context(args=None):
 
 def init_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--controller", default="occulus", choices=["occulus", "keyboard", "gello", "spacemouse", "policy"])
+    parser.add_argument("--controller", default="oculus", choices=["oculus", "keyboard", "gello", "spacemouse", "policy", "proxy"])
     parser.add_argument("--controller_kwargs", type=dict, default={})
     parser.add_argument("--disable_saving", action="store_true", help="Disable saving data")
     parser.add_argument("--disable_post_process", action="store_true", help="Disable post processing")

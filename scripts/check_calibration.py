@@ -11,7 +11,7 @@ from eva.runner import Runner
 
 def check_calibration(runner: Runner):
     print("Annotating end effector pose in camera feed...")
-    runner.set_controller("occulus")
+    runner.set_controller("oculus")
     runner.reload_calibration()
     runner.check_calibration()
     runner.set_prev_controller()
