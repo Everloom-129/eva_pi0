@@ -1,5 +1,4 @@
 import os
-import time
 from copy import deepcopy
 from datetime import datetime
 import cv2
@@ -8,19 +7,40 @@ import threading
 import numpy as np
 import json
 
+# Classic controllers
 from eva.controllers.oculus import Oculus
 from eva.controllers.spacemouse import SpaceMouse
 from eva.controllers.keyboard import Keyboard
 from eva.controllers.gello import Gello
-from eva.controllers.policy import Policy
 from eva.controllers.replayer import Replayer
+
+# Base policy controllers
+from eva.controllers.policy import Policy
 from eva.controllers.proxy import Proxy
 
+# VLA inference controllers
+from eva.controllers.pi0_policy import Pi0Policy
+from eva.controllers.spacemouse_pi0 import SpacemousePi0
+from eva.controllers.replay_pi0 import ReplayPi0
+
+# Episode Writer & Utils
 from eva.utils.trajectory_utils import run_trajectory
 from eva.utils.calibration_utils import calibrate_camera, check_calibration, check_calibration_info, save_calibration_info
-from eva.utils.misc_utils import data_dir, run_threaded_command, get_latest_trajectory, get_latest_image
+from eva.utils.misc_utils import data_dir, run_threaded_command
 from eva.utils.parameters import hand_camera_id, code_version, robot_serial_number, robot_type
+from colorama import Fore, init
+init(autoreset=True)
 
+
+
+"""
+Runner class for EVA framework
+Author: Will Liang, Jie Wang
+Notes: Register new controllers in Runner.set_controller() function.
+Version: 
+   2025-06-28: EVA v1.0 release
+   2025-09-14: add support for VLA inference controllers 
+"""
 
 class Runner:
     def __init__(self, env, controller="oculus", controller_kwargs={}, disable_saving=False, disable_post_process=False, record_depth=False, record_pcd=False, **kwargs):
@@ -135,7 +155,7 @@ class Runner:
         self.set_controller("replayer", traj_path=traj_path, action_space=action_space)
         rollout_dir = self.run_trajectory("evaluate", wait_for_controller=not autoplay, reset_robot=not skip_reset)
         if not autoplay:
-            self.print("Ready to reset, press any controller button...")
+            self.print(Fore.RED + "Ready to reset, press any controller button...")
             while True:
                 controller_info = self.get_controller_info()
                 if controller_info["success"] or controller_info["failure"]:
@@ -262,7 +282,7 @@ class Runner:
             im = cv2.cvtColor(feed, cv2.COLOR_RGB2BGR)
             cv2.imwrite(str(output_dir / f"{cam_id}.jpg"), im)
         save_calibration_info(os.path.join(output_dir, "calibration.json"))
-        print(f"Saved pictures to {output_dir}")
+        print(Fore.GREEN + f"Saved pictures to {output_dir}")
         return str(output_dir)
     
     def set_action_space(self, action_space):
@@ -270,6 +290,14 @@ class Runner:
     
     def set_controller(self, controller, **kwargs):
         self.prev_controller = self.controller
+        
+        def update_action_spaces(action_space, gripper_action_space):
+            print(Fore.YELLOW + f"RUNNER == Updating action spaces - Action: {action_space}, Gripper: {gripper_action_space} ==")
+            self.env.set_action_space(action_space)
+            self.env.set_gripper_action_space(gripper_action_space)
+            
+
+
         if isinstance(controller, str):
             if controller == "oculus":
                 self.controller = Oculus()
@@ -285,9 +313,23 @@ class Runner:
                 self.controller = Replayer(**kwargs)
             elif controller == "proxy":
                 self.controller = Proxy(**kwargs)
+            elif controller == "pi0_policy":
+                self.controller = Pi0Policy(**kwargs)
+            elif controller == "replay_pi0":
+                kwargs["on_switch_callback"] = update_action_spaces
+                self.controller = ReplayPi0(**kwargs)
+            elif controller == "spacemouse_pi0":
+                kwargs["on_switch_callback"] = update_action_spaces
+                self.controller = SpacemousePi0(**kwargs)
+            elif controller == "keyboard_pi0":
+                kwargs["on_switch_callback"] = update_action_spaces
+                self.controller = KeyboardPi0(**kwargs)
             else:
                 raise ValueError(f"Controller {controller} not recognized!")
+                print(Fore.YELLOW + f"Controller set to {self.controller.get_name()}\n\n")
+                self.env.set_action_space(self.controller.action_space)
         else:
+            raise ValueError(Fore.RED + f"Controller {controller} not recognized!")
             self.controller = controller
         self.env.set_action_space(self.controller.get_action_space())
         self.env.set_gripper_action_space(self.controller.get_gripper_action_space())
@@ -305,6 +347,14 @@ class Runner:
         # In general, we want to print everything to the runner console
         print(string)
 
+    def set_instruction(self, instruction):
+        if hasattr(self.controller, "set_instruction"):
+            self.controller.set_instruction(instruction)
+            return True
+        else:
+            print(Fore.YELLOW + f"Controller {self.controller.get_name()} does not support instruction")
+            return False
+    
     def close(self):
         self.close_camera_feed()
         self.controller.close()
